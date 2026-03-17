@@ -1,0 +1,38 @@
+name: Update tracks CSV
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # Every Monday at 08:00 UTC (BBC episodes drop on Fridays)
+  workflow_dispatch:        # Also allows manual "Run workflow" button on GitHub
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml spotipy pylast musicbrainzngs python-dotenv
+
+      - name: Run updater
+        env:
+          SPOTIFY_CLIENT_ID:     ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          LASTFM_API_KEY:        ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_API_SECRET:     ${{ secrets.LASTFM_API_SECRET }}
+        run: python update.py
+
+      - name: Commit updated CSV (if changed)
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/data/tracks.csv
+          git diff --cached --quiet || git commit -m "chore: update tracks CSV [skip ci]"
+          git push

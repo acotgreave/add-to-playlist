@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add to Playlist — Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Callback MUST be defined before the SDK script loads -->
+  <script>window.onSpotifyIframeApiReady = (IFrameAPI) => { window._spotifyAPI = IFrameAPI; };</script>
+  <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0c1829;   /* deep navy */
+      --surface:   #132035;   /* navy surface */
+      --surface2:  #1b2d47;   /* medium navy */
+      --border:    #253d5c;   /* navy border */
+      --accent:    #e8392a;   /* coral red (show colour) */
+      --accent-lt: #ff6b55;   /* lighter coral */
+      --gold:      #f5a11c;   /* amber/gold (show colour) */
+      --pink:      #d4488e;   /* pink (show colour) */
+      --cyan:      #1aa4b8;   /* teal/cyan (show colour) */
+      --green:     #1db954;   /* spotify green */
+      --text:      #f0f0f0;
+      --muted:     #6e8faa;
+      --muted2:    #99b4c8;
+    }
+
+    /* Thin show-colours stripe across the very top */
+    body::before {
+      content: '';
+      display: block;
+      height: 4px;
+      background: linear-gradient(90deg,
+        var(--accent) 0%, var(--accent) 25%,
+        var(--gold)   25%, var(--gold)  50%,
+        var(--pink)   50%, var(--pink)  75%,
+        var(--cyan)   75%, var(--cyan)  100%);
+    }
+
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Layout ──────────────────────────────────────────────── */
+    .page { max-width: 1440px; margin: 0 auto; padding: 0 24px 48px; }
+
+    /* ── Header ──────────────────────────────────────────────── */
+    .site-header {
+      padding: 32px 0 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0;
+      position: relative;
+    }
+    /* Subtle geometric circles — echo the show's visual language */
+    .site-header::before,
+    .site-header::after {
+      content: '';
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .site-header::before {
+      width: 420px; height: 420px;
+      right: -80px; top: -260px;
+      background: radial-gradient(circle, rgba(245,161,28,0.09) 0%, transparent 65%);
+    }
+    .site-header::after {
+      width: 260px; height: 260px;
+      right: 240px; top: -180px;
+      background: radial-gradient(circle, rgba(212,72,142,0.06) 0%, transparent 65%);
+    }
+
+    .site-title {
+      font-family: 'Bebas Neue', Impact, sans-serif;
+      font-size: 3rem;
+      font-weight: 400;   /* Bebas Neue is inherently bold */
+      letter-spacing: .04em;
+      color: #fff;
+      line-height: 1;
+    }
+    /* "EXPLORER" in gold, slightly smaller */
+    .site-title .sub {
+      color: var(--gold);
+      font-size: 2.2rem;
+      margin-left: 10px;
+    }
+    /* Attribution line (triangle-game style) */
+    .attribution {
+      font-size: .72rem;
+      color: var(--muted);
+      font-weight: 300;
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+    .attribution a {
+      color: var(--gold);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(245,161,28,0.3);
+    }
+    .attribution a:hover { border-bottom-color: var(--gold); }
+
+    /* Stats + about trigger row */
+    .header-meta {
+      display: flex; align-items: center; gap: 14px;
+      margin-top: 6px;
+      position: relative;   /* tooltip anchors to this */
+    }
+    .header-stats { color: var(--muted); font-size: .84rem; }
+
+    /* Hover tooltip for About */
+    .about-trigger {
+      /* position: static so tooltip is relative to .header-meta */
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: .75rem; color: var(--muted);
+      cursor: default;
+      border-bottom: 1px dashed var(--border);
+      padding-bottom: 1px;
+    }
+    .about-trigger:hover { color: var(--muted2); }
+    .about-tooltip {
+      display: none;
+      position: absolute;
+      top: calc(100% + 10px);
+      left: 0;
+      width: min(480px, calc(100vw - 48px));
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold);
+      border-radius: 0 8px 8px 0;
+      padding: 14px 18px;
+      font-size: .88rem;
+      line-height: 1.75;
+      color: var(--muted2);
+      z-index: 50;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .about-tooltip em { color: var(--text); font-style: normal; font-weight: 600; }
+    .about-trigger:hover .about-tooltip { display: block; }
+
+    /* ── Filter bar ──────────────────────────────────────────── */
+    .filter-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+    }
+    .filter-row {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    }
+    .filter-row + .filter-row { margin-top: 10px; }
+
+    .f-search {
+      flex: 1; min-width: 200px;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 9px 14px;
+      border-radius: 7px; font-size: .87rem;
+    }
+    .f-search:focus { outline: none; border-color: var(--accent); }
+
+    .f-select, .f-year {
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); padding: 9px 12px;
+      border-radius: 7px; font-size: .87rem; cursor: pointer;
+    }
+    .f-year { width: 80px; }
+    .f-label { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+
+    .filter-info {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: 12px; font-size: .82rem; color: var(--muted);
+    }
+    .filter-info a { color: var(--accent-lt); cursor: pointer; text-decoration: none; }
+    .filter-info a:hover { text-decoration: underline; }
+
+    /* ── Track table ─────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    table { border-collapse: collapse; width: 100%; font-size: .83rem; }
+    thead th {
+      background: var(--surface2);
+      position: sticky; top: 0; z-index: 2;
+      padding: 11px 12px; text-align: left;
+      color: var(--muted); font-weight: 500;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap; user-select: none;
+    }
+    thead th[data-sort] { cursor: pointer; }
+    thead th[data-sort]:hover { color: var(--muted2); }
+    thead th .sa { margin-left: 4px; font-size: .7rem; opacity: .4; }
+    thead th.sa-asc  .sa::after { content: '▲'; opacity: 1; }
+    thead th.sa-desc .sa::after { content: '▼'; opacity: 1; }
+    thead th .sa::after { content: '⇅'; }
+
+    tbody tr { border-bottom: 1px solid rgba(37,61,92,0.7); }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr.player-row { background: #0a1525; }
+    tbody tr.player-row:hover { background: #0a1525; }
+    tbody td { padding: 9px 12px; vertical-align: middle; }
+
+    /* Art thumbnail column */
+    .art-cell { padding: 6px 8px 6px 12px !important; width: 58px; }
+    .art-thumb {
+      width: 46px; height: 46px; border-radius: 5px;
+      object-fit: cover; display: block; background: var(--surface2);
+    }
+    .art-placeholder {
+      width: 46px; height: 46px; border-radius: 5px;
+      background: var(--surface2); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; color: var(--border);
+    }
+
+    /* Play button */
+    .play-btn {
+      width: 30px; height: 30px; border-radius: 50%;
+      background: var(--green); border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .65rem; color: #000; font-weight: 700;
+      transition: transform .1s, background .1s; flex-shrink: 0;
+    }
+    .play-btn:hover  { transform: scale(1.12); background: #1ed760; }
+    .play-btn.active { background: #fff; }
+    .play-cell { width: 44px; padding: 6px 4px !important; text-align: center; }
+
+    /* Inline player row */
+    .player-iframe-wrap { padding: 0 12px 10px; }
+    .player-iframe-wrap iframe {
+      width: 100%; height: 80px; border: none; border-radius: 8px; display: block;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 20px;
+      font-size: .69rem; font-weight: 600; white-space: nowrap;
+    }
+    .b-feat { background: rgba(245,161,28,0.15); color: #f5c55a; border: 1px solid rgba(245,161,28,0.25); }
+    .b-bg   { background: rgba(37,61,92,0.6);   color: var(--muted2); border: 1px solid var(--border); }
+    .b-rev  { background: rgba(232,57,42,0.15);  color: #ff8a6b; border: 1px solid rgba(232,57,42,0.25); }
+    .b-cov  { background: rgba(26,164,184,0.12); color: #5dd0de; border: 1px solid rgba(26,164,184,0.25); }
+
+    /* Track title link */
+    .track-link { color: var(--text); font-weight: 500; text-decoration: none; }
+    .track-link:hover { color: var(--accent-lt); text-decoration: underline; text-underline-offset: 3px; }
+
+    /* Ep cell */
+    .ep-num  { font-size: .82rem; color: var(--muted2); white-space: nowrap; }
+    .ep-date { font-size: .7rem;  color: var(--muted);  margin-top: 1px; }
+
+    /* ── Pagination ──────────────────────────────────────────── */
+    .pagination {
+      display: flex; align-items: center; justify-content: center;
+      gap: 4px; padding: 16px 0 4px; flex-wrap: wrap;
+    }
+    .pg-btn {
+      min-width: 34px; height: 34px; border-radius: 6px;
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--muted2); font-size: .84rem; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 8px; transition: background .12s, color .12s;
+    }
+    .pg-btn:hover:not(:disabled)  { background: var(--surface2); color: var(--text); }
+    .pg-btn.active  { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .pg-btn:disabled { opacity: .3; cursor: not-allowed; }
+    .pg-ellipsis { color: var(--muted); font-size: .84rem; padding: 0 4px; }
+
+    /* ── Loading state ───────────────────────────────────────── */
+    .loading-msg {
+      padding: 48px; text-align: center;
+      color: var(--muted); font-size: .9rem;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ─── Site header ─── -->
+  <header class="site-header">
+    <h1 class="site-title">Add to Playlist<span class="sub">Explorer</span></h1>
+    <p class="attribution">'Written' by <a href="https://www.linkedin.com/in/acotgreave/" target="_blank" rel="noopener">Andy Cotgreave</a> with Claude Opus 4.6.
+      <a href="https://www.linkedin.com/in/acotgreave/" target="_blank" rel="noopener">Follow Andy on LinkedIn</a></p>
+    <div class="header-meta">
+      <p class="header-stats" id="header-stats">Loading…</p>
+      <div class="about-trigger">ⓘ About this page
+        <div class="about-tooltip">
+          <em>Add to Playlist</em> is one of BBC Radio 4's most quietly wonderful programmes.
+          Each week, two guests join presenters Jeffrey Boakye and Anna Phoebe to add five tracks
+          to an imaginary communal playlist — music they love, music that deserves to be heard.
+          The result is a gloriously eclectic archive of discovery. This is a fan-made explorer
+          of every track ever played. Browse, search, and listen.
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── Filter bar ─── -->
+  <div class="filter-section">
+    <div class="filter-row">
+      <input type="text" id="search-input" class="f-search"
+             placeholder="Search title, artist, genre, episode…"
+             oninput="debouncedFilter()">
+      <select id="type-filter" class="f-select" onchange="applyFilters()">
+        <option value="">All types</option>
+        <option value="featured">Featured</option>
+        <option value="background">Background</option>
+      </select>
+      <select id="cover-filter" class="f-select" onchange="applyFilters()">
+        <option value="">All tracks</option>
+        <option value="true">Covers only</option>
+        <option value="false">Originals only</option>
+      </select>
+      <span class="f-label">Year:</span>
+      <input type="number" id="year-from" class="f-year" placeholder="from"
+             min="1900" max="2030" oninput="applyFilters()">
+      <input type="number" id="year-to" class="f-year" placeholder="to"
+             min="1900" max="2030" oninput="applyFilters()">
+    </div>
+
+    <div class="filter-info">
+      <span id="filter-count" style="color:var(--muted2)"></span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <select id="page-size-select" class="f-select"
+                onchange="changePageSize(this.value)"
+                style="padding:5px 10px;font-size:.8rem;">
+          <option value="50">50 / page</option>
+          <option value="100">100 / page</option>
+          <option value="200">200 / page</option>
+          <option value="0">All</option>
+        </select>
+        <a onclick="clearFilters()">Clear filters</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Pagination (top) ─── -->
+  <div class="pagination" id="pg-top"></div>
+
+  <!-- ─── Track table ─── -->
+  <div class="table-wrap">
+    <table id="tracks-table">
+      <thead>
+        <tr>
+          <th style="width:58px;padding:10px 4px 10px 12px;"></th><!-- art -->
+          <th style="width:44px;"></th><!-- play -->
+          <th data-sort="title"          onclick="sortTable('title')">Title <span class="sa"></span></th>
+          <th data-sort="artist"         onclick="sortTable('artist')">Artist <span class="sa"></span></th>
+          <th data-sort="release_year"   onclick="sortTable('release_year')">Year <span class="sa"></span></th>
+          <th data-sort="genre1"         onclick="sortTable('genre1')">Genre <span class="sa"></span></th>
+          <th data-sort="track_type"     onclick="sortTable('track_type')">Type <span class="sa"></span></th>
+          <th data-sort="episode_number" onclick="sortTable('episode_number')">Ep. <span class="sa"></span></th>
+        </tr>
+      </thead>
+      <tbody id="tracks-body">
+        <tr><td colspan="8" class="loading-msg">Loading tracks…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── Pagination (bottom) ─── -->
+  <div class="pagination" id="pg-bottom"></div>
+
+</div><!-- /page -->
+
+<script>
+  // ── Spotify IFrame API ────────────────────────────────────────────────
+  // window._spotifyAPI is set by the pre-head onSpotifyIframeApiReady callback
+  let _spotifyController = null;
+
+  // ── State ─────────────────────────────────────────────────────────────
+  let allTracks      = [];
+  let filteredTracks = [];
+  let sortKey  = 'episode_number';
+  let sortDir  = 'desc';
+  let currentPage = 1;
+  let pageSize = 50;
+  let currentPlayingId = null;
+  let _filterTimer = null;
+
+  // ── Init ──────────────────────────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', loadData);
+
+  // ── CSV load & process ────────────────────────────────────────────────
+  async function loadData() {
+    try {
+      const response = await fetch('data/tracks.csv');
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const text = await response.text();
+      const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+      allTracks = processCsvRows(result.data);
+      updateStats();
+      applyFilters();
+    } catch (e) {
+      document.getElementById('tracks-body').innerHTML =
+        `<tr><td colspan="8" class="loading-msg">Could not load data: ${e.message}</td></tr>`;
+    }
+  }
+
+  function processCsvRows(rows) {
+    // The CSV already contains genre1/genre2/genre3 and episode_number.
+    // Only need to derive episode_number if the CSV is missing it (old format).
+    if (!rows.length || rows[0].episode_number) return rows;
+
+    const epDates = {};
+    rows.forEach(r => {
+      if (r.episode_pid && r.episode_date && !epDates[r.episode_pid])
+        epDates[r.episode_pid] = r.episode_date;
+    });
+    const sortedPids = Object.entries(epDates)
+      .sort((a, b) => a[1].localeCompare(b[1])).map(([p]) => p);
+    const epNum = {};
+    sortedPids.forEach((p, i) => { epNum[p] = i + 1; });
+    return rows.map(r => ({ ...r, episode_number: epNum[r.episode_pid] || '' }));
+  }
+
+  function updateStats() {
+    const episodes = new Set(allTracks.map(t => t.episode_pid)).size;
+    const latest = allTracks
+      .map(t => t.episode_date).filter(Boolean).sort().pop() || '';
+    const updatedStr = latest ? ` · updated ${latest.slice(0, 10)}` : '';
+    document.getElementById('header-stats').textContent =
+      `${allTracks.length.toLocaleString()} tracks · ${episodes} episodes${updatedStr}`;
+  }
+
+  // ── Filters & sort ─────────────────────────────────────────────────────
+  function debouncedFilter() {
+    clearTimeout(_filterTimer);
+    _filterTimer = setTimeout(applyFilters, 300);
+  }
+
+  function applyFilters() {
+    const search   = document.getElementById('search-input').value.toLowerCase();
+    const typeF    = document.getElementById('type-filter').value;
+    const coverF   = document.getElementById('cover-filter').value;
+    const yearFrom = parseInt(document.getElementById('year-from').value) || 0;
+    const yearTo   = parseInt(document.getElementById('year-to').value)   || 9999;
+
+    filteredTracks = allTracks.filter(t => {
+      if (search) {
+        const hay = [t.title, t.artist, t.genre1, t.genre2, t.genre3,
+                     t.other_genres, t.episode_title]
+                    .map(s => s || '').join(' ').toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      if (typeF && t.track_type !== typeF) return false;
+      if (coverF) {
+        const isCover = t.is_cover === 'True' || t.is_cover === '1' || t.is_cover === true;
+        if (coverF === 'true'  && !isCover) return false;
+        if (coverF === 'false' &&  isCover) return false;
+      }
+      if (yearFrom || yearTo < 9999) {
+        const y = parseInt(t.release_year) || 0;
+        if (y && (y < yearFrom || y > yearTo)) return false;
+      }
+      return true;
+    });
+
+    // Sort
+    filteredTracks.sort((a, b) => {
+      let va = a[sortKey] || '', vb = b[sortKey] || '';
+      if (sortKey === 'release_year' || sortKey === 'episode_number') {
+        va = parseInt(va) || 0; vb = parseInt(vb) || 0;
+      }
+      if (va < vb) return sortDir === 'asc' ? -1 :  1;
+      if (va > vb) return sortDir === 'asc' ?  1 : -1;
+      return 0;
+    });
+
+    currentPage = 1;
+    closePlayer();
+
+    const total = filteredTracks.length;
+    document.getElementById('filter-count').textContent =
+      `${total.toLocaleString()} track${total !== 1 ? 's' : ''} of ${allTracks.length.toLocaleString()}`;
+
+    renderTable();
+    renderPagination();
+  }
+
+  function clearFilters() {
+    document.getElementById('search-input').value = '';
+    document.getElementById('type-filter').value  = '';
+    document.getElementById('cover-filter').value = '';
+    document.getElementById('year-from').value    = '';
+    document.getElementById('year-to').value      = '';
+    applyFilters();
+  }
+
+  function sortTable(key) {
+    if (sortKey === key) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortKey = key; sortDir = 'asc';
+    }
+    document.querySelectorAll('thead th[data-sort]').forEach(th => {
+      th.classList.remove('sa-asc', 'sa-desc');
+      if (th.dataset.sort === key)
+        th.classList.add(sortDir === 'asc' ? 'sa-asc' : 'sa-desc');
+    });
+    applyFilters();
+  }
+
+  // ── Render table ───────────────────────────────────────────────────────
+  function renderTable() {
+    const tbody = document.getElementById('tracks-body');
+    let slice;
+    if (pageSize === 0) {
+      slice = filteredTracks;
+    } else {
+      const start = (currentPage - 1) * pageSize;
+      slice = filteredTracks.slice(start, start + pageSize);
+    }
+
+    if (slice.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="loading-msg">No tracks match your filters.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = slice.map(t => {
+      const isCover     = t.is_cover === 'True' || t.is_cover === '1';
+      const needsReview = t.needs_review === 'True' || t.needs_review === '1';
+      const year        = t.release_year || (needsReview ? '?' : '');
+
+      const artCell = t.album_art_url
+        ? `<td class="art-cell"><img class="art-thumb" src="${esc(t.album_art_url)}"
+               alt="" loading="lazy"
+               onerror="this.parentNode.innerHTML='<div class=art-placeholder>♪</div>'"></td>`
+        : `<td class="art-cell"><div class="art-placeholder">♪</div></td>`;
+
+      const playCell = t.spotify_id
+        ? `<td class="play-cell">
+             <button class="play-btn" id="pb-${esc(t.spotify_id)}"
+               onclick="togglePlay('${esc(t.spotify_id)}','${esc(t.title)}','${esc(t.artist)}')"
+               title="Play: ${esc(t.title)}">▶</button>
+           </td>`
+        : `<td class="play-cell"></td>`;
+
+      const typeBadge = t.track_type === 'featured'
+        ? '<span class="badge b-feat">featured</span>'
+        : '<span class="badge b-bg">background</span>';
+
+      const yearCell   = `${esc(year)}${needsReview ? ' <span class="badge b-rev">review</span>' : ''}`;
+      const coverBadge = isCover ? '<span class="badge b-cov">cover</span>' : '';
+
+      const epCell = t.episode_number
+        ? `<div class="ep-num">#${t.episode_number}</div>
+           <div class="ep-date">${esc((t.episode_date || '').slice(0, 10))}</div>`
+        : `<div class="ep-date">${esc((t.episode_date || '').slice(0, 10))}</div>`;
+
+      return `<tr data-sid="${esc(t.spotify_id || '')}">
+        ${artCell}
+        ${playCell}
+        <td>${t.spotify_id
+          ? `<a class="track-link" href="https://open.spotify.com/track/${esc(t.spotify_id)}" target="_blank" rel="noopener">${esc(t.title)}</a>`
+          : `<span style="color:var(--text);font-weight:500;">${esc(t.title)}</span>`
+        }</td>
+        <td style="color:var(--muted2);">${esc(t.artist)}</td>
+        <td style="color:var(--muted2);white-space:nowrap;">${yearCell}</td>
+        <td style="color:var(--muted);font-size:.78rem;">${esc(t.genre1 || '')}</td>
+        <td>${typeBadge}</td>
+        <td>${epCell}${coverBadge}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // ── Inline Spotify player ──────────────────────────────────────────────
+  function togglePlay(id, title, artist) {
+    if (currentPlayingId === id) { closePlayer(); return; }
+    if (currentPlayingId) closePlayer(false);
+
+    currentPlayingId = id;
+
+    const row = document.querySelector(`tr[data-sid="${id}"]`);
+    if (!row) return;
+
+    const btn = document.getElementById('pb-' + id);
+    if (btn) btn.classList.add('active');
+
+    const playerRow = document.createElement('tr');
+    playerRow.className = 'player-row';
+    playerRow.id = 'player-row-' + id;
+    const td = document.createElement('td');
+    td.colSpan = 8;
+    td.className = 'player-iframe-wrap';
+    const embedTarget = document.createElement('div');
+    embedTarget.id = 'spotify-embed-' + id;
+    td.appendChild(embedTarget);
+    playerRow.appendChild(td);
+    row.insertAdjacentElement('afterend', playerRow);
+
+    if (window._spotifyAPI) {
+      window._spotifyAPI.createController(embedTarget, {
+        uri: `spotify:track:${id}`,
+        width: '100%',
+        height: 80,
+      }, (controller) => {
+        _spotifyController = controller;
+        controller.play();
+      });
+    } else {
+      embedTarget.innerHTML = `<iframe
+        src="https://open.spotify.com/embed/track/${id}?utm_source=generator"
+        style="width:100%;height:80px;border:none;border-radius:8px;display:block;"
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture">
+      </iframe>`;
+    }
+
+    setTimeout(() => playerRow.scrollIntoView({behavior:'smooth', block:'nearest'}), 80);
+  }
+
+  function closePlayer(resetState = true) {
+    if (currentPlayingId) {
+      const btn = document.getElementById('pb-' + currentPlayingId);
+      if (btn) btn.classList.remove('active');
+      if (_spotifyController) {
+        try { _spotifyController.destroy(); } catch(e) {}
+        _spotifyController = null;
+      }
+      const pr = document.getElementById('player-row-' + currentPlayingId);
+      if (pr) pr.remove();
+      if (resetState) currentPlayingId = null;
+    }
+  }
+
+  // ── Page size ──────────────────────────────────────────────────────────
+  function changePageSize(val) {
+    pageSize = parseInt(val) || 0;
+    currentPage = 1;
+    closePlayer();
+    renderTable();
+    renderPagination();
+  }
+
+  // ── Pagination ─────────────────────────────────────────────────────────
+  function renderPagination() {
+    const totalPages = pageSize === 0 ? 1 : Math.ceil(filteredTracks.length / pageSize);
+    const html = buildPaginationHTML(currentPage, totalPages);
+    document.getElementById('pg-top').innerHTML    = html;
+    document.getElementById('pg-bottom').innerHTML = html;
+  }
+
+  function buildPaginationHTML(cur, total) {
+    if (total <= 1) return '';
+    const start = (cur - 1) * pageSize + 1;
+    const end   = Math.min(cur * pageSize, filteredTracks.length);
+
+    let pages = [];
+    const win = 2;
+    for (let i = 1; i <= total; i++) {
+      if (i === 1 || i === total || (i >= cur - win && i <= cur + win)) pages.push(i);
+    }
+    pages = [...new Set(pages)].sort((a, b) => a - b);
+
+    let btnHTML = '';
+    btnHTML += `<button class="pg-btn" ${cur===1?'disabled':''} onclick="goPage(${cur-1})">‹</button>`;
+
+    let prev = 0;
+    for (const p of pages) {
+      if (p - prev > 1) btnHTML += `<span class="pg-ellipsis">…</span>`;
+      btnHTML += `<button class="pg-btn${p===cur?' active':''}" onclick="goPage(${p})">${p}</button>`;
+      prev = p;
+    }
+
+    btnHTML += `<button class="pg-btn" ${cur===total?'disabled':''} onclick="goPage(${cur+1})">›</button>`;
+
+    const countInfo = `<span style="color:var(--muted);font-size:.8rem;margin:0 8px;">${start}–${end} of ${filteredTracks.length.toLocaleString()}</span>`;
+    return countInfo + btnHTML;
+  }
+
+  function goPage(n) {
+    const totalPages = pageSize === 0 ? 1 : Math.ceil(filteredTracks.length / pageSize);
+    if (n < 1 || n > totalPages) return;
+    closePlayer();
+    currentPage = n;
+    renderTable();
+    renderPagination();
+    document.querySelector('.table-wrap').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  // ── Util ───────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+</script>
+</body>
+</html>
