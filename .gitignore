@@ -6,7 +6,7 @@ app.py
 templates/
 
 # Local data cache files (large, not needed in repo)
-data/
+/data/
 *.db
 
 # Python
