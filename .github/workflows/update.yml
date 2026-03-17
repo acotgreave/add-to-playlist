@@ -2,7 +2,7 @@ name: Update tracks CSV
 
 on:
   schedule:
-    - cron: '0 8 * * 1'   # Every Monday at 08:00 UTC (BBC episodes drop on Fridays)
+    - cron: '59 23 * * 5'  # Every Friday at 23:59 UTC (episodes drop on Fridays)
   workflow_dispatch:        # Also allows manual "Run workflow" button on GitHub
 
 jobs:
