@@ -418,38 +418,63 @@ def _br_split(p_el):
     return lines
 
 
+def _find_separator(line, sep):
+    """Return index of the LAST occurrence of sep (case-insensitive) that is
+    NOT inside parentheses, or -1 if not found."""
+    depth = 0
+    last_idx = -1
+    sep_l = sep.lower()
+    line_l = line.lower()
+    slen = len(sep)
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth = max(0, depth - 1)
+        elif depth == 0 and line_l[i:i + slen] == sep_l:
+            last_idx = i
+        i += 1
+    return last_idx
+
+
 def _parse_track_line(line):
     """
     Parse a track line into {title, artist}.
 
     Formats seen on Add to Playlist:
       "Wolf Totem by The HU"
-      "Daybreak (Lever du jour) by Maurice Ravel"
+      "Daybreak (Lever du jour) by Maurice Ravel"      ← 'by' in title handled
       "Running Up That Hill (A Deal With God) by Kate Bush"
-      "Ex-Wives from SIX: The Musical"
+      "Ex-Wives from SIX: The Musical"                ← 'from' separator
+      "God Save the Queen (from 1888 and 1898)"        ← 'from' inside parens, ignored
+      "Hey Ya! By Outkast"                             ← uppercase By, now handled
 
-    Strategy: split on the LAST occurrence of ' by ' to handle 'by' in titles.
-    Fallback: split on ' from ' (for musical theatre tracks).
+    Strategy:
+      1. Split on LAST ' by ' (case-insensitive) that is NOT inside parentheses.
+      2. Fallback: split on LAST ' from ' outside parentheses.
+      3. Title-only if no separator found.
     """
     line = line.strip()
     if not line or len(line) < 3:
         return None
 
-    if ' by ' in line:
-        idx = line.rfind(' by ')
+    idx = _find_separator(line, ' by ')
+    if idx >= 0:
         title  = line[:idx].strip()
         artist = line[idx + 4:].strip()
         if title:
             return {'title': title, 'artist': artist}
 
-    if ' from ' in line:
-        idx = line.rfind(' from ')
+    idx = _find_separator(line, ' from ')
+    if idx >= 0:
         title  = line[:idx].strip()
         artist = line[idx + 6:].strip()
         if title:
             return {'title': title, 'artist': artist}
 
-    # No separator — return as title-only (will be flagged needs_review)
+    # No separator — return as title-only
     return {'title': line, 'artist': ''}
 
 

@@ -201,20 +201,21 @@ def get_track_metadata(title, artist, progress_cb=None):
 
 def _empty_meta():
     return {
-        'year':                 None,
-        'track_release_year':   None,
-        'original_year':        None,
+        'year':                  None,
+        'track_release_year':    None,
+        'original_year':         None,
         'earliest_release_year': None,
-        'is_cover':             False,
-        'original_artist':      '',
-        'genre':                '',
-        'spotify_id':           '',
-        'album_art_url':        '',
-        'mb_recording_id':      '',
-        'mb_work_id':           '',
-        'source':               'unknown',
-        'needs_review':         False,
-        'notes':                '',
+        'is_cover':              False,
+        'original_artist':       '',
+        'artist':                '',   # from Spotify — backfills blank scraper artist
+        'genre':                 '',
+        'spotify_id':            '',
+        'album_art_url':         '',
+        'mb_recording_id':       '',
+        'mb_work_id':            '',
+        'source':                'unknown',
+        'needs_review':          False,
+        'notes':                 '',
     }
 
 
@@ -255,11 +256,14 @@ def _lookup_spotify(title, artist):
         images = track.get('album', {}).get('images', [])
         album_art = images[-1].get('url', '') if images else ''
 
+        spotify_artist = ', '.join(a['name'] for a in track.get('artists', []))
+
         return {
             'track_release_year': year,   # year of this specific Spotify recording
             'genre': ', '.join(genres[:8]) if genres else '',
             'spotify_id': track.get('id', ''),
             'album_art_url': album_art,
+            'artist': spotify_artist,     # backfill if scraper left artist blank
         }
 
     except Exception as e:

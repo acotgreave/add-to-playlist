@@ -108,7 +108,7 @@ def make_row(episode, track, meta_data=None):
         'episode_date':          episode.get('date', ''),
         'track_type':            track.get('track_type', 'featured'),
         'title':                 track.get('title', ''),
-        'artist':                track.get('artist', ''),
+        'artist':                track.get('artist', '') or '',  # may be overridden below
         'year':                  '',
         'track_release_year':    '',
         'original_year':         '',
@@ -133,6 +133,9 @@ def make_row(episode, track, meta_data=None):
             val = meta_data.get(field, '')
             row[field] = '' if val is None else val
         row.update(split_genres(meta_data.get('genre', '') or ''))
+        # Backfill artist from Spotify if the scraper left it blank
+        if not row['artist'] and meta_data.get('artist'):
+            row['artist'] = meta_data['artist']
     return row
 
 
