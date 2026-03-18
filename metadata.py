@@ -436,14 +436,16 @@ def _get_mb_work(mb, work_id):
                 composer = rel.get('artist', {}).get('name', '')
                 break
 
-        # Composition date from work attributes or disambiguation
-        # MusicBrainz stores it in 'work.attributes' or sometimes in disambiguation
-        for attr in work.get('attribute-list', []):
-            val = attr.get('value', '')
-            y = _parse_year(val)
-            if y:
-                composition_year = y
-                break
+        # Composition date — primary source is the work's begin-date field
+        composition_year = _parse_year(work.get('begin-date', ''))
+
+        # Fallback: scan attribute-list (rarely populated, but keep as safety net)
+        if not composition_year:
+            for attr in work.get('attribute-list', []):
+                y = _parse_year(attr.get('value', ''))
+                if y:
+                    composition_year = y
+                    break
 
         # Genre/tags from work
         tags = work.get('tag-list', [])

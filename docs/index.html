@@ -282,6 +282,92 @@
       padding: 48px; text-align: center;
       color: var(--muted); font-size: .9rem;
     }
+
+    /* ── Edit year button ────────────────────────────────────── */
+    .edit-year-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: .75rem; opacity: 0; padding: 0 0 0 4px;
+      line-height: 1; vertical-align: middle;
+      transition: opacity .15s;
+    }
+    tbody tr:hover .edit-year-btn { opacity: .5; }
+    tbody tr:hover .edit-year-btn:hover { opacity: 1; }
+    .edit-year-btn.corrected { opacity: .9 !important; }
+
+    /* ── Modal overlay ───────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.65); z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--gold);
+      border-radius: 10px;
+      padding: 24px 28px 20px;
+      width: min(420px, calc(100vw - 32px));
+      box-shadow: 0 16px 48px rgba(0,0,0,.6);
+    }
+    .modal-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.4rem; letter-spacing: .04em;
+      color: var(--gold); margin-bottom: 4px;
+    }
+    .modal-subtitle {
+      font-size: .78rem; color: var(--muted); margin-bottom: 18px;
+    }
+    .modal-field { margin-bottom: 14px; }
+    .modal-field label {
+      display: block; font-size: .75rem;
+      color: var(--muted2); font-weight: 500; margin-bottom: 4px;
+    }
+    .modal-field input, .modal-field textarea {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 6px;
+      color: var(--text); padding: 8px 12px; font-size: .87rem;
+      font-family: inherit;
+    }
+    .modal-field input:focus, .modal-field textarea:focus {
+      outline: none; border-color: var(--gold);
+    }
+    .modal-field textarea { height: 60px; resize: vertical; }
+    .modal-actions {
+      display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;
+    }
+    .btn-save {
+      background: var(--gold); color: #000; border: none;
+      padding: 8px 20px; border-radius: 6px; font-size: .87rem;
+      font-weight: 600; cursor: pointer; transition: background .12s;
+    }
+    .btn-save:hover { background: #ffc040; }
+    .btn-cancel {
+      background: transparent; color: var(--muted2);
+      border: 1px solid var(--border); padding: 8px 16px;
+      border-radius: 6px; font-size: .87rem; cursor: pointer;
+    }
+    .btn-cancel:hover { color: var(--text); border-color: var(--muted2); }
+    .btn-clear-corr {
+      background: transparent; color: var(--muted);
+      border: none; font-size: .75rem; cursor: pointer;
+      margin-right: auto; padding: 0; text-decoration: underline;
+    }
+    .btn-clear-corr:hover { color: var(--accent-lt); }
+
+    /* ── Floating download button ────────────────────────────── */
+    #corrections-fab {
+      display: none; position: fixed;
+      bottom: 24px; right: 24px; z-index: 90;
+      background: var(--gold); color: #000;
+      border: none; border-radius: 8px;
+      padding: 12px 20px; font-size: .87rem; font-weight: 700;
+      cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,.5);
+      transition: transform .12s, background .12s;
+      line-height: 1.3;
+    }
+    #corrections-fab:hover { transform: translateY(-2px); background: #ffc040; }
+    #corrections-fab small { display: block; font-weight: 400; font-size: .72rem; opacity: .8; }
   </style>
 </head>
 <body>
@@ -374,6 +460,37 @@
 
 </div><!-- /page -->
 
+<!-- ─── Edit year modal ─── -->
+<div class="modal-overlay" id="edit-modal" onclick="handleOverlayClick(event)">
+  <div class="modal-box">
+    <div class="modal-title">Edit Track Data</div>
+    <div class="modal-subtitle" id="modal-track-label"></div>
+    <div class="modal-field">
+      <label>Release Year <span style="color:var(--muted);font-weight:400">(year of this recording)</span></label>
+      <input type="number" id="modal-release-year" min="1500" max="2030" placeholder="e.g. 1994">
+    </div>
+    <div class="modal-field">
+      <label>Original / Composition Year <span style="color:var(--muted);font-weight:400">(first written or released)</span></label>
+      <input type="number" id="modal-original-year" min="1500" max="2030" placeholder="e.g. 1801">
+    </div>
+    <div class="modal-field">
+      <label>Notes</label>
+      <textarea id="modal-notes" placeholder="e.g. Bach BWV 1001, composed 1720"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-clear-corr" id="btn-clear-this" onclick="clearThisCorrection()">Remove correction</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-save" onclick="saveEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Floating corrections button ─── -->
+<button id="corrections-fab" onclick="downloadCorrectedCsv()">
+  <span id="fab-label">0 corrections pending</span>
+  <small>Download corrected CSV ↓</small>
+</button>
+
 <script>
   // ── Spotify IFrame API ────────────────────────────────────────────────
   // window._spotifyAPI is set by the pre-head onSpotifyIframeApiReady callback
@@ -390,7 +507,7 @@
   let _filterTimer = null;
 
   // ── Init ──────────────────────────────────────────────────────────────
-  window.addEventListener('DOMContentLoaded', loadData);
+  window.addEventListener('DOMContentLoaded', () => { loadCorrections(); loadData(); });
 
   // ── CSV load & process ────────────────────────────────────────────────
   async function loadData() {
@@ -531,7 +648,15 @@
     tbody.innerHTML = slice.map(t => {
       const isCover     = t.is_cover === 'True' || t.is_cover === '1';
       const needsReview = t.needs_review === 'True' || t.needs_review === '1';
-      const year        = t.release_year || (needsReview ? '?' : '');
+      const key         = trackKey(t);
+      const corr        = corrections[key];
+
+      // Merge corrections over CSV data
+      const releaseYr = corr?.release_year || t.release_year;
+      const origYr    = corr?.original_year || t.original_year;
+
+      // Display: prefer original/composition year, fall back to release year
+      const displayYr = origYr || releaseYr || (needsReview ? '?' : '');
 
       const artCell = t.album_art_url
         ? `<td class="art-cell"><img class="art-thumb" src="${esc(t.album_art_url)}"
@@ -551,7 +676,17 @@
         ? '<span class="badge b-feat">featured</span>'
         : '<span class="badge b-bg">background</span>';
 
-      const yearCell   = `${esc(year)}${needsReview ? ' <span class="badge b-rev">review</span>' : ''}`;
+      // Year cell: show year with optional dual-date tooltip
+      let yearStr = esc(displayYr);
+      if (origYr && releaseYr && origYr !== releaseYr) {
+        yearStr = `<span title="Composed/orig. ${origYr} · Recorded ${releaseYr}" style="cursor:help;border-bottom:1px dotted var(--muted)">${esc(displayYr)}</span>`;
+      }
+      const pencilBtn = `<button class="edit-year-btn${corr ? ' corrected' : ''}"
+           onclick="openEditModal('${esc(key)}')"
+           title="${corr ? 'Correction saved — click to edit' : 'Edit year data'}"
+         >${corr ? '✅' : '✏️'}</button>`;
+      const reviewBadge = (needsReview && !corr) ? ' <span class="badge b-rev">review</span>' : '';
+      const yearCell   = `${yearStr}${pencilBtn}${reviewBadge}`;
       const coverBadge = isCover ? '<span class="badge b-cov">cover</span>' : '';
 
       const epCell = t.episode_number
@@ -688,6 +823,124 @@
     renderPagination();
     document.querySelector('.table-wrap').scrollIntoView({behavior:'smooth', block:'start'});
   }
+
+  // ── Manual corrections (localStorage) ────────────────────────────────
+  const CORRECTIONS_KEY = 'atp_year_corrections_v1';
+  let corrections = {};
+
+  function loadCorrections() {
+    try { corrections = JSON.parse(localStorage.getItem(CORRECTIONS_KEY) || '{}'); }
+    catch(e) { corrections = {}; }
+    updateFab();
+  }
+
+  function saveCorrections() {
+    localStorage.setItem(CORRECTIONS_KEY, JSON.stringify(corrections));
+    updateFab();
+  }
+
+  function trackKey(t) {
+    // Stable key: prefer mb_recording_id; fall back to episode+title+artist
+    return t.mb_recording_id || `${t.episode_pid}|${t.title}|${t.artist}`;
+  }
+
+  function updateFab() {
+    const count = Object.keys(corrections).length;
+    const fab   = document.getElementById('corrections-fab');
+    const label = document.getElementById('fab-label');
+    fab.style.display = count > 0 ? 'block' : 'none';
+    if (label) label.textContent = `${count} correction${count !== 1 ? 's' : ''} pending`;
+  }
+
+  // ── Edit modal ────────────────────────────────────────────────────────
+  let _editKey = null;
+
+  function openEditModal(key) {
+    _editKey = key;
+    // Find the track
+    const t = allTracks.find(r => trackKey(r) === key);
+    const corr = corrections[key] || {};
+
+    document.getElementById('modal-track-label').textContent =
+      t ? `${t.title} — ${t.artist}` : key;
+
+    document.getElementById('modal-release-year').value =
+      corr.release_year || (t ? t.release_year : '') || '';
+    document.getElementById('modal-original-year').value =
+      corr.original_year || (t ? t.original_year : '') || '';
+    document.getElementById('modal-notes').value =
+      corr.notes || (t ? t.notes : '') || '';
+
+    // Show/hide "Remove correction" button
+    document.getElementById('btn-clear-this').style.display =
+      corrections[key] ? 'inline' : 'none';
+
+    document.getElementById('edit-modal').classList.add('open');
+    document.getElementById('modal-release-year').focus();
+  }
+
+  function closeModal() {
+    document.getElementById('edit-modal').classList.remove('open');
+    _editKey = null;
+  }
+
+  function handleOverlayClick(e) {
+    if (e.target === document.getElementById('edit-modal')) closeModal();
+  }
+
+  function saveEdit() {
+    if (!_editKey) return;
+    const ry = document.getElementById('modal-release-year').value.trim();
+    const oy = document.getElementById('modal-original-year').value.trim();
+    const nt = document.getElementById('modal-notes').value.trim();
+
+    if (ry || oy || nt) {
+      corrections[_editKey] = { release_year: ry, original_year: oy, notes: nt };
+    } else {
+      delete corrections[_editKey];
+    }
+    saveCorrections();
+    closeModal();
+    renderTable();  // refresh to show updated year / checkmark
+  }
+
+  function clearThisCorrection() {
+    if (!_editKey) return;
+    delete corrections[_editKey];
+    saveCorrections();
+    closeModal();
+    renderTable();
+  }
+
+  // ── Download corrected CSV ─────────────────────────────────────────────
+  function downloadCorrectedCsv() {
+    const merged = allTracks.map(t => {
+      const key  = trackKey(t);
+      const corr = corrections[key];
+      if (!corr) return t;
+      return {
+        ...t,
+        release_year:  corr.release_year  || t.release_year,
+        original_year: corr.original_year || t.original_year,
+        notes:         corr.notes         || t.notes,
+        needs_review:  'False',   // mark as reviewed
+      };
+    });
+
+    const csv = Papa.unparse(merged);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'tracks_corrected.csv';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Keyboard shortcut: Escape closes modal
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
 
   // ── Util ───────────────────────────────────────────────────────────────
   function esc(s) {
