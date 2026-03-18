@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add to Playlist — Stories</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0c1829;
+      --surface:  #132035;
+      --surface2: #1b2d47;
+      --border:   #253d5c;
+      --accent:   #e8392a;
+      --gold:     #f5a11c;
+      --pink:     #d4488e;
+      --cyan:     #1aa4b8;
+      --green:    #1db954;
+      --text:     #f0f0f0;
+      --muted:    #6e8faa;
+      --muted2:   #99b4c8;
+    }
+    body::before {
+      content: '';
+      display: block; height: 4px;
+      background: linear-gradient(90deg,
+        var(--accent) 25%, var(--gold) 25% 50%,
+        var(--pink) 50% 75%, var(--cyan) 75%);
+    }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100vh;
+    }
+    .page { max-width: 1200px; margin: 0 auto; padding: 0 24px 64px; }
+
+    /* ── Header ── */
+    .site-header { padding: 32px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 32px; }
+    .site-title { font-family: 'Bebas Neue', sans-serif; font-size: 2.8rem; line-height: 1; }
+    .site-title .sub { color: var(--gold); margin-left: 10px; font-size: 2rem; }
+    .header-nav { margin-top: 12px; display: flex; gap: 16px; }
+    .nav-link { color: var(--muted); font-size: .85rem; text-decoration: none; border-bottom: 1px dashed var(--border); }
+    .nav-link:hover { color: var(--gold); }
+    .nav-link.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+    /* ── KPI strip ── */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+    .kpi {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px 24px;
+      border-top: 3px solid var(--gold);
+    }
+    .kpi-num { font-family: 'Bebas Neue', sans-serif; font-size: 2.6rem; color: var(--gold); line-height: 1; }
+    .kpi-label { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+    .kpi-sub { font-size: .72rem; color: var(--muted); margin-top: 2px; font-style: italic; }
+
+    /* ── Chart cards ── */
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+    .charts-grid.wide { grid-template-columns: 1fr; }
+    .chart-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 24px;
+    }
+    .chart-title {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem;
+      color: var(--text); letter-spacing: .04em; margin-bottom: 4px;
+    }
+    .chart-subtitle { font-size: .78rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+    .chart-insight {
+      margin-top: 16px; padding: 12px 16px;
+      background: rgba(245,161,28,0.08); border-left: 3px solid var(--gold);
+      border-radius: 0 6px 6px 0; font-size: .8rem; color: var(--muted2); line-height: 1.6;
+    }
+    .chart-insight strong { color: var(--gold); }
+
+    /* ── Bar charts (CSS) ── */
+    .bar-chart { display: flex; flex-direction: column; gap: 6px; }
+    .bar-row { display: flex; align-items: center; gap: 10px; font-size: .78rem; }
+    .bar-label { width: 90px; text-align: right; color: var(--muted2); flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar-label.wide { width: 130px; }
+    .bar-label.narrow { width: 46px; }
+    .bar-track { flex: 1; height: 22px; background: var(--surface2); border-radius: 3px; overflow: hidden; position: relative; }
+    .bar-fill { height: 100%; border-radius: 3px; transition: width .6s ease; display: flex; align-items: center; padding-left: 8px; }
+    .bar-fill span { font-size: .7rem; font-weight: 600; color: rgba(0,0,0,0.7); white-space: nowrap; }
+    .bar-val { width: 32px; text-align: right; color: var(--muted); font-size: .75rem; flex-shrink: 0; }
+
+    /* ── SVG decade chart ── */
+    .decade-wrap { overflow-x: auto; }
+    svg.decade-chart { display: block; min-width: 500px; }
+
+    /* ── Age donut / split ── */
+    .age-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .age-label-col { display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+    .age-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; flex-shrink: 0; }
+
+    /* ── Loading ── */
+    .loading { padding: 48px; text-align: center; color: var(--muted); }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header class="site-header">
+    <h1 class="site-title">Add to Playlist<span class="sub">Stories</span></h1>
+    <nav class="header-nav">
+      <a href="index.html" class="nav-link">← Explorer</a>
+      <a href="dashboard.html" class="nav-link active">Data Stories</a>
+    </nav>
+  </header>
+
+  <div id="loading" class="loading">Loading data…</div>
+  <div id="content" style="display:none">
+
+    <!-- KPIs -->
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-num" id="kpi-tracks">–</div>
+        <div class="kpi-label">Tracks featured</div>
+        <div class="kpi-sub" id="kpi-episodes">across – episodes</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--cyan)">
+        <div class="kpi-num" id="kpi-span" style="color:var(--cyan)">–</div>
+        <div class="kpi-label">Years of music history</div>
+        <div class="kpi-sub" id="kpi-oldest">from – to –</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--pink)">
+        <div class="kpi-num" id="kpi-artists" style="color:var(--pink)">–</div>
+        <div class="kpi-label">Unique artists</div>
+        <div class="kpi-sub" id="kpi-top-artist">most: –</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--accent)">
+        <div class="kpi-num" id="kpi-genres" style="color:var(--accent)">–</div>
+        <div class="kpi-label">Genres represented</div>
+        <div class="kpi-sub" id="kpi-top-genre">top genre: –</div>
+      </div>
+    </div>
+
+    <!-- Row 1: Decade chart (full width) -->
+    <div class="charts-grid wide">
+      <div class="chart-card">
+        <div class="chart-title">When Was This Music Made?</div>
+        <div class="chart-subtitle">Number of tracks by decade — from Baroque to the present day</div>
+        <div class="decade-wrap"><svg class="decade-chart" id="decade-svg" height="200"></svg></div>
+        <div class="chart-insight" id="decade-insight"></div>
+      </div>
+    </div>
+
+    <!-- Row 2: Age + Artists -->
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">How Old Was It When Played?</div>
+        <div class="chart-subtitle">Age of each track at time of broadcast — does the show favour old or new?</div>
+        <div class="bar-chart" id="age-chart"></div>
+        <div class="chart-insight" id="age-insight"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Most Featured Artists</div>
+        <div class="chart-subtitle">Artists appearing most across all 115 episodes</div>
+        <div class="bar-chart" id="artist-chart"></div>
+        <div class="chart-insight" id="artist-insight"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Genres + Featured vs Background -->
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">Genre Landscape</div>
+        <div class="chart-subtitle">Top genres across all featured and background tracks</div>
+        <div class="bar-chart" id="genre-chart"></div>
+        <div class="chart-insight" id="genre-insight"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Featured vs Background</div>
+        <div class="chart-subtitle">The five guest-chosen tracks vs music playing in the studio</div>
+        <div class="bar-chart" id="type-chart"></div>
+        <div class="chart-insight" id="type-insight"></div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div>
+
+<script>
+const COLORS = ['#f5a11c','#1aa4b8','#d4488e','#e8392a','#1db954','#7b68ee','#ff8c42','#4ecdc4'];
+
+window.addEventListener('DOMContentLoaded', () => {
+  Papa.parse('data/tracks.csv', {
+    header: true, skipEmptyLines: true, download: true,
+    complete: ({ data }) => {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('content').style.display = 'block';
+      render(data);
+    }
+  });
+});
+
+function render(rows) {
+  // ── KPIs ────────────────────────────────────────────────────────────────
+  const episodes  = new Set(rows.map(r => r.episode_pid)).size;
+  const withYear  = rows.filter(r => r.year && /^\d+$/.test(r.year));
+  const minYr     = Math.min(...withYear.map(r => +r.year));
+  const maxYr     = Math.max(...withYear.map(r => +r.year));
+  const artists   = new Set(rows.map(r => r.artist).filter(Boolean));
+  const topArtist = topN(rows.map(r => r.artist).filter(Boolean), 1)[0];
+  const genres    = new Set(rows.map(r => r.genre1).filter(Boolean));
+  const topGenre  = topN(rows.map(r => r.genre1).filter(Boolean), 1)[0];
+  const oldestR   = withYear.reduce((a,b) => +a.year < +b.year ? a : b);
+  const newestR   = withYear.reduce((a,b) => +a.year > +b.year ? a : b);
+
+  setText('kpi-tracks',    rows.length.toLocaleString());
+  setText('kpi-episodes',  `across ${episodes} episodes`);
+  setText('kpi-span',      maxYr - minYr);
+  setText('kpi-oldest',    `${minYr} to ${maxYr}`);
+  setText('kpi-artists',   artists.size.toLocaleString());
+  setText('kpi-top-artist',`most: ${topArtist.val} (${topArtist.count}×)`);
+  setText('kpi-genres',    genres.size.toLocaleString());
+  setText('kpi-top-genre', `top: ${topGenre.val} (${topGenre.count})`);
+
+  // ── Decade chart ────────────────────────────────────────────────────────
+  const decades = {};
+  withYear.forEach(r => {
+    const d = Math.floor(+r.year / 10) * 10;
+    decades[d] = (decades[d] || 0) + 1;
+  });
+  const decadeKeys  = Object.keys(decades).map(Number).sort((a,b) => a-b);
+  const decadeVals  = decadeKeys.map(k => decades[k]);
+  const maxDecade   = Math.max(...decadeVals);
+  const svgW        = Math.max(700, decadeKeys.length * 36);
+  const svgH        = 200;
+  const barW        = Math.min(30, (svgW / decadeKeys.length) - 4);
+  const padL = 10, padR = 10, padT = 10, padB = 40;
+  const plotH = svgH - padT - padB;
+
+  const svg = document.getElementById('decade-svg');
+  svg.setAttribute('width', svgW);
+  svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+
+  decadeKeys.forEach((decade, i) => {
+    const x   = padL + i * (svgW - padL - padR) / decadeKeys.length;
+    const val = decades[decade];
+    const bh  = (val / maxDecade) * plotH;
+    const by  = padT + plotH - bh;
+
+    // Highlight the peak decade
+    const isPeak = val === maxDecade;
+    const color  = decade >= 2020 ? '#1aa4b8' : decade >= 1990 ? '#f5a11c' : decade >= 1960 ? '#d4488e' : '#6e8faa';
+
+    const rect = svgEl('rect', { x, y: by, width: barW, height: bh,
+      fill: isPeak ? '#f5a11c' : color, rx: 2, opacity: isPeak ? 1 : 0.75 });
+    svg.appendChild(rect);
+
+    // Value label on tall bars
+    if (val > 20) {
+      const txt = svgEl('text', { x: x + barW/2, y: by - 4,
+        'text-anchor': 'middle', fill: '#f0f0f0', 'font-size': 9, 'font-family': 'DM Sans' });
+      txt.textContent = val;
+      svg.appendChild(txt);
+    }
+
+    // Decade label
+    const lbl = svgEl('text', { x: x + barW/2, y: svgH - 22,
+      'text-anchor': 'middle', fill: '#6e8faa', 'font-size': 9, 'font-family': 'DM Sans' });
+    lbl.textContent = `${decade}s`;
+    svg.appendChild(lbl);
+  });
+
+  // Axis line
+  const ax = svgEl('line', { x1: padL, y1: padT + plotH, x2: svgW - padR, y2: padT + plotH,
+    stroke: '#253d5c', 'stroke-width': 1 });
+  svg.appendChild(ax);
+
+  const peakDecade = decadeKeys[decadeVals.indexOf(maxDecade)];
+  setText('decade-insight',
+    `The <strong>${peakDecade}s</strong> is the most-featured decade with <strong>${maxDecade} tracks</strong>. ` +
+    `But the show spans ${maxYr - minYr} years — from a ${minYr} Baroque aria to ` +
+    `tracks from the last few years. Radio 4 tastes run deep.`);
+
+  // ── Age when played ─────────────────────────────────────────────────────
+  const ageBuckets = [
+    { label: 'Brand new (0–2y)',  min: 0,   max: 2,   color: '#1db954' },
+    { label: '3–10 years old',    min: 3,   max: 10,  color: '#1aa4b8' },
+    { label: '11–25 years',       min: 11,  max: 25,  color: '#f5a11c' },
+    { label: '26–50 years',       min: 26,  max: 50,  color: '#d4488e' },
+    { label: '51–100 years',      min: 51,  max: 100, color: '#e8392a' },
+    { label: 'Over 100 years',    min: 101, max: 9999,color: '#7b68ee' },
+  ];
+  const ageCounts = ageBuckets.map(b => ({ ...b, count: 0 }));
+  rows.forEach(r => {
+    const y   = +r.year;
+    const epy = r.episode_date ? +r.episode_date.slice(0,4) : null;
+    if (!y || !epy) return;
+    const age = epy - y;
+    if (age < 0) return;
+    const b = ageCounts.find(b => age >= b.min && age <= b.max);
+    if (b) b.count++;
+  });
+  const maxAge = Math.max(...ageCounts.map(b => b.count));
+  renderBars('age-chart', ageCounts.map(b => ({ label: b.label, val: b.count, color: b.color })), maxAge, 'wide');
+
+  const biggestAge = ageCounts.reduce((a,b) => a.count > b.count ? a : b);
+  setText('age-insight',
+    `The sweet spot is <strong>${biggestAge.label}</strong> — <strong>${biggestAge.count} tracks</strong>. ` +
+    `Guests overwhelmingly choose music from their formative years, not brand new releases.`);
+
+  // ── Top artists ─────────────────────────────────────────────────────────
+  const topArtists = topN(rows.map(r => r.artist).filter(Boolean), 12);
+  renderBars('artist-chart', topArtists.map((a,i) => ({ label: a.val, val: a.count, color: COLORS[i % COLORS.length] })),
+    topArtists[0].count, 'wide');
+  setText('artist-insight',
+    `<strong>John Williams</strong> and <strong>David Bowie</strong> are joint top at 12 tracks each — ` +
+    `an extraordinary pairing. Mozart sits third at 9, proving the show truly spans from ` +
+    `classical to contemporary.`);
+
+  // ── Genres ───────────────────────────────────────────────────────────────
+  const topGenres = topN(rows.map(r => r.genre1).filter(Boolean), 12);
+  renderBars('genre-chart', topGenres.map((g,i) => ({ label: g.val, val: g.count, color: COLORS[i % COLORS.length] })),
+    topGenres[0].count, 'wide');
+  setText('genre-insight',
+    `<strong>Classical</strong> is the single biggest genre (96 tracks) despite the show's eclectic mix. ` +
+    `Jazz, Baroque, and Classic Rock follow — but there are <strong>${genres.size} distinct genres</strong> total.`);
+
+  // ── Featured vs Background ───────────────────────────────────────────────
+  const featured   = rows.filter(r => r.track_type === 'featured').length;
+  const background = rows.filter(r => r.track_type === 'background').length;
+  const covers     = rows.filter(r => r.is_cover === 'True').length;
+  const withSpotify = rows.filter(r => r.spotify_id).length;
+  renderBars('type-chart', [
+    { label: 'Featured tracks',    val: featured,    color: '#f5a11c' },
+    { label: 'Background music',   val: background,  color: '#1aa4b8' },
+    { label: 'Found on Spotify',   val: withSpotify, color: '#1db954' },
+    { label: 'Are covers',         val: covers,      color: '#d4488e' },
+  ], Math.max(featured, background), 'wide');
+  setText('type-insight',
+    `<strong>${featured}</strong> guest-chosen tracks vs <strong>${background}</strong> background tracks. ` +
+    `<strong>${withSpotify.toLocaleString()}</strong> can be played inline. ` +
+    `Only <strong>${Math.round(100*covers/rows.length)}%</strong> of tracks are covers.`);
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function renderBars(containerId, items, maxVal, labelClass = '') {
+  const el = document.getElementById(containerId);
+  el.innerHTML = items.map(item => `
+    <div class="bar-row">
+      <div class="bar-label ${labelClass}" title="${item.label}">${item.label}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${Math.round(100 * item.val / maxVal)}%;background:${item.color}">
+          <span>${item.val}</span>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function topN(arr, n) {
+  const counts = {};
+  arr.forEach(v => counts[v] = (counts[v] || 0) + 1);
+  return Object.entries(counts)
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([val, count]) => ({ val, count }));
+}
+
+function setText(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v));
+  return el;
+}
+</script>
+</body>
+</html>
