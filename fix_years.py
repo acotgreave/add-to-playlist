@@ -18,6 +18,10 @@ Usage:
 import argparse
 import csv
 import sys
+
+# Force UTF-8 output so arrow characters don't crash on Windows cp1252 terminals
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 import time
 from pathlib import Path
 
@@ -68,28 +72,28 @@ def save_csv(rows, path=None):
 
 
 def get_work_date(mb, work_id):
-    """Return (begin_year, composer) from a MusicBrainz Work."""
+    """Return (composition_year, composer) from a MusicBrainz Work.
+
+    Composition date lives on the composer→work artist-relation as
+    'begin' (start of composition) / 'end' (completion). We prefer
+    'end' (finished year) falling back to 'begin'.
+    """
     try:
         time.sleep(1.1)
-        result = mb.get_work_by_id(work_id, includes=['artist-rels', 'tags'])
+        result = mb.get_work_by_id(work_id, includes=['artist-rels', 'work-rels'])
         work = result.get('work', {})
 
-        # Primary: begin-date (composition date)
-        year = parse_year(work.get('begin-date', ''))
-
-        # Fallback: attribute-list
-        if not year:
-            for attr in work.get('attribute-list', []):
-                year = parse_year(attr.get('value', ''))
-                if year:
-                    break
-
-        # Composer
+        year = None
         composer = ''
+
         for rel in work.get('artist-relation-list', []):
             if rel.get('type') in ('composer', 'lyricist', 'writer'):
-                composer = rel.get('artist', {}).get('name', '')
-                break
+                if not composer:
+                    composer = rel.get('artist', {}).get('name', '')
+                # 'end' = completion year; fall back to 'begin'
+                rel_year = parse_year(rel.get('end', '')) or parse_year(rel.get('begin', ''))
+                if rel_year and not year:
+                    year = rel_year
 
         return year, composer
     except Exception as e:
