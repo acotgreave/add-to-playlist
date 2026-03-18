@@ -578,7 +578,7 @@
         if (coverF === 'false' &&  isCover) return false;
       }
       if (yearFrom || yearTo < 9999) {
-        const y = parseInt(t.release_year) || 0;
+        const y = parseInt(t.original_year || t.release_year) || 0;
         if (y && (y < yearFrom || y > yearTo)) return false;
       }
       return true;
@@ -588,7 +588,13 @@
     filteredTracks.sort((a, b) => {
       let va = a[sortKey] || '', vb = b[sortKey] || '';
       if (sortKey === 'release_year' || sortKey === 'episode_number') {
-        va = parseInt(va) || 0; vb = parseInt(vb) || 0;
+        // For year sort, prefer original_year (composition date) over release_year
+        if (sortKey === 'release_year') {
+          va = parseInt(a.original_year || a.release_year) || 0;
+          vb = parseInt(b.original_year || b.release_year) || 0;
+        } else {
+          va = parseInt(va) || 0; vb = parseInt(vb) || 0;
+        }
       }
       if (va < vb) return sortDir === 'asc' ? -1 :  1;
       if (va > vb) return sortDir === 'asc' ?  1 : -1;
