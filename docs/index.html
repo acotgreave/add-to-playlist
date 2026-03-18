@@ -443,7 +443,7 @@
           <th style="width:44px;"></th><!-- play -->
           <th data-sort="title"          onclick="sortTable('title')">Title <span class="sa"></span></th>
           <th data-sort="artist"         onclick="sortTable('artist')">Artist <span class="sa"></span></th>
-          <th data-sort="release_year"   onclick="sortTable('release_year')">Year <span class="sa"></span></th>
+          <th data-sort="year"   onclick="sortTable('year')">Year <span class="sa"></span></th>
           <th data-sort="genre1"         onclick="sortTable('genre1')">Genre <span class="sa"></span></th>
           <th data-sort="track_type"     onclick="sortTable('track_type')">Type <span class="sa"></span></th>
           <th data-sort="episode_number" onclick="sortTable('episode_number')">Ep. <span class="sa"></span></th>
@@ -466,7 +466,7 @@
     <div class="modal-title">Edit Track Data</div>
     <div class="modal-subtitle" id="modal-track-label"></div>
     <div class="modal-field">
-      <label>Release Year <span style="color:var(--muted);font-weight:400">(year of this recording)</span></label>
+      <label>Track Release Year <span style="color:var(--muted);font-weight:400">(year of this specific recording)</span></label>
       <input type="number" id="modal-release-year" min="1500" max="2030" placeholder="e.g. 1994">
     </div>
     <div class="modal-field">
@@ -578,7 +578,7 @@
         if (coverF === 'false' &&  isCover) return false;
       }
       if (yearFrom || yearTo < 9999) {
-        const y = parseInt(t.original_year || t.release_year) || 0;
+        const y = parseInt(t.year || t.original_year || t.track_release_year) || 0;
         if (y && (y < yearFrom || y > yearTo)) return false;
       }
       return true;
@@ -587,14 +587,8 @@
     // Sort
     filteredTracks.sort((a, b) => {
       let va = a[sortKey] || '', vb = b[sortKey] || '';
-      if (sortKey === 'release_year' || sortKey === 'episode_number') {
-        // For year sort, prefer original_year (composition date) over release_year
-        if (sortKey === 'release_year') {
-          va = parseInt(a.original_year || a.release_year) || 0;
-          vb = parseInt(b.original_year || b.release_year) || 0;
-        } else {
-          va = parseInt(va) || 0; vb = parseInt(vb) || 0;
-        }
+      if (sortKey === 'year' || sortKey === 'episode_number') {
+        va = parseInt(va) || 0; vb = parseInt(vb) || 0;
       }
       if (va < vb) return sortDir === 'asc' ? -1 :  1;
       if (va > vb) return sortDir === 'asc' ?  1 : -1;
@@ -658,11 +652,15 @@
       const corr        = corrections[key];
 
       // Merge corrections over CSV data
-      const releaseYr = corr?.release_year || t.release_year;
-      const origYr    = corr?.original_year || t.original_year;
+      const trackRelYr = corr?.track_release_year || t.track_release_year;
+      const origYr     = corr?.original_year      || t.original_year;
+      const earliestYr = t.earliest_release_year;
 
-      // Display: prefer original/composition year, fall back to release year
-      const displayYr = origYr || releaseYr || (needsReview ? '?' : '');
+      // Display year: correction override → CSV year field → fallback
+      const displayYr = corr?.year
+        || t.year
+        || origYr || earliestYr || trackRelYr
+        || (needsReview ? '?' : '');
 
       const artCell = t.album_art_url
         ? `<td class="art-cell"><img class="art-thumb" src="${esc(t.album_art_url)}"
@@ -682,10 +680,15 @@
         ? '<span class="badge b-feat">featured</span>'
         : '<span class="badge b-bg">background</span>';
 
-      // Year cell: show year with optional dual-date tooltip
+      // Year cell: tooltip breaks down composition vs recording year
       let yearStr = esc(displayYr);
-      if (origYr && releaseYr && origYr !== releaseYr) {
-        yearStr = `<span title="Composed/orig. ${origYr} · Recorded ${releaseYr}" style="cursor:help;border-bottom:1px dotted var(--muted)">${esc(displayYr)}</span>`;
+      const tipParts = [];
+      if (origYr)     tipParts.push(`Composed ${origYr}`);
+      if (earliestYr && earliestYr !== origYr) tipParts.push(`First released ${earliestYr}`);
+      if (trackRelYr && trackRelYr !== earliestYr && trackRelYr !== origYr)
+        tipParts.push(`This recording ${trackRelYr}`);
+      if (tipParts.length > 1) {
+        yearStr = `<span title="${tipParts.join(' · ')}" style="cursor:help;border-bottom:1px dotted var(--muted)">${esc(displayYr)}</span>`;
       }
       const pencilBtn = `<button class="edit-year-btn${corr ? ' corrected' : ''}"
            onclick="openEditModal('${esc(key)}')"
@@ -871,7 +874,7 @@
       t ? `${t.title} — ${t.artist}` : key;
 
     document.getElementById('modal-release-year').value =
-      corr.release_year || (t ? t.release_year : '') || '';
+      corr.track_release_year || (t ? t.track_release_year : '') || '';
     document.getElementById('modal-original-year').value =
       corr.original_year || (t ? t.original_year : '') || '';
     document.getElementById('modal-notes').value =
@@ -901,7 +904,9 @@
     const nt = document.getElementById('modal-notes').value.trim();
 
     if (ry || oy || nt) {
-      corrections[_editKey] = { release_year: ry, original_year: oy, notes: nt };
+      const candidates = [oy ? parseInt(oy) : null, ry ? parseInt(ry) : null].filter(Boolean);
+      const bestYear   = candidates.length ? String(Math.min(...candidates)) : '';
+      corrections[_editKey] = { track_release_year: ry, original_year: oy, year: bestYear, notes: nt };
     } else {
       delete corrections[_editKey];
     }
@@ -926,10 +931,11 @@
       if (!corr) return t;
       return {
         ...t,
-        release_year:  corr.release_year  || t.release_year,
-        original_year: corr.original_year || t.original_year,
-        notes:         corr.notes         || t.notes,
-        needs_review:  'False',   // mark as reviewed
+        year:               corr.year               || t.year,
+        track_release_year: corr.track_release_year || t.track_release_year,
+        original_year:      corr.original_year      || t.original_year,
+        notes:              corr.notes              || t.notes,
+        needs_review:       'False',
       };
     });
 

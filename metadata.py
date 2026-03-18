@@ -2,19 +2,20 @@
 Music metadata lookup: release year, genre, cover detection.
 
 Priority chain per track:
-  1. Spotify  — release date, artist genres
-  2. MusicBrainz — covers/originals, classical works, composition dates
+  1. Spotify  — track_release_year (Spotify album date), artist genres
+  2. MusicBrainz — covers/originals, classical works, composition dates,
+                   earliest_release_year (first ever commercial release)
   3. Last.fm  — genre tags as supplement
 
-For covers, we report:
-  release_year        = the year of the specific version heard (e.g. Jimi's 1968)
-  original_year       = original composition/release year (e.g. Dylan's 1967)
-  is_cover            = True
-  original_artist     = the original artist/composer
-
-For classical works:
-  release_year        = composition year (from MusicBrainz work)
-  is_cover            = False (unless it's a modern arrangement)
+Fields returned:
+  year                = best-guess "when first made" = min(original_year,
+                        earliest_release_year, track_release_year)
+  track_release_year  = year of the specific Spotify recording found
+  original_year       = composition date (classical works only, validated
+                        against composer birth year)
+  earliest_release_year = first MB commercial release across all recordings
+  is_cover            = True if this is a cover version
+  original_artist     = composer or original performer
 """
 
 import os
@@ -97,7 +98,8 @@ def _load_cache():
     global _meta_cache
     if _meta_cache is not None:
         return _meta_cache
-    path = DATA_DIR / 'metadata_cache.json'
+    # v2 cache uses new field names
+    path = DATA_DIR / 'metadata_cache_v2.json'
     if path.exists():
         with open(path, 'r', encoding='utf-8') as f:
             _meta_cache = json.load(f)
@@ -108,7 +110,7 @@ def _load_cache():
 
 def _save_cache():
     DATA_DIR.mkdir(exist_ok=True)
-    with open(DATA_DIR / 'metadata_cache.json', 'w', encoding='utf-8') as f:
+    with open(DATA_DIR / 'metadata_cache_v2.json', 'w', encoding='utf-8') as f:
         json.dump(_meta_cache, f, indent=2, ensure_ascii=False)
 
 
@@ -123,20 +125,12 @@ def _cache_key(title, artist):
 
 def get_track_metadata(title, artist, progress_cb=None):
     """
-    Returns a metadata dict:
-    {
-        release_year:     int or None,
-        original_year:    int or None,   # if cover/classical
-        is_cover:         bool,
-        original_artist:  str,           # composer or original performer
-        genre:            str,           # comma-separated
-        spotify_id:       str,
-        mb_recording_id:  str,
-        mb_work_id:       str,
-        source:           str,           # 'spotify', 'musicbrainz', 'lastfm', 'manual'
-        needs_review:     bool,
-        notes:            str,
-    }
+    Returns a metadata dict with fields:
+      year, track_release_year, original_year, earliest_release_year,
+      is_cover, original_artist, genre,
+      spotify_id, album_art_url,
+      mb_recording_id, mb_work_id,
+      source, needs_review, notes
     """
     cache = _load_cache()
     key = _cache_key(title, artist)
@@ -155,7 +149,6 @@ def get_track_metadata(title, artist, progress_cb=None):
     # --- Always try MusicBrainz for cover/original/classical info ---
     mb_data = _lookup_musicbrainz(title, artist, progress_cb)
     if mb_data:
-        # MusicBrainz wins for original_year, is_cover, original_artist
         if mb_data.get('is_cover') is not None:
             result['is_cover'] = mb_data['is_cover']
         if mb_data.get('original_year'):
@@ -166,8 +159,11 @@ def get_track_metadata(title, artist, progress_cb=None):
             result['mb_recording_id'] = mb_data['mb_recording_id']
         if mb_data.get('mb_work_id'):
             result['mb_work_id'] = mb_data['mb_work_id']
-        if mb_data.get('release_year') and not result.get('release_year'):
-            result['release_year'] = mb_data['release_year']
+        if mb_data.get('earliest_release_year'):
+            result['earliest_release_year'] = mb_data['earliest_release_year']
+        # MB earliest release fills track_release_year if Spotify didn't provide one
+        if mb_data.get('earliest_release_year') and not result.get('track_release_year'):
+            result['track_release_year'] = mb_data['earliest_release_year']
         if mb_data.get('genre'):
             result['genre'] = mb_data['genre']
         if not result.get('source') or result['source'] == 'spotify':
@@ -184,8 +180,16 @@ def get_track_metadata(title, artist, progress_cb=None):
             if result['source'] == 'unknown':
                 result['source'] = 'lastfm'
 
+    # --- Compute best-guess year ---
+    candidates = [v for v in [
+        result.get('original_year'),
+        result.get('earliest_release_year'),
+        result.get('track_release_year'),
+    ] if v]
+    result['year'] = min(candidates) if candidates else None
+
     # Flag if we're not confident
-    if not result.get('release_year'):
+    if not result.get('year'):
         result['needs_review'] = True
 
     cache[key] = result
@@ -197,18 +201,20 @@ def get_track_metadata(title, artist, progress_cb=None):
 
 def _empty_meta():
     return {
-        'release_year': None,
-        'original_year': None,
-        'is_cover': False,
-        'original_artist': '',
-        'genre': '',
-        'spotify_id': '',
-        'album_art_url': '',
-        'mb_recording_id': '',
-        'mb_work_id': '',
-        'source': 'unknown',
-        'needs_review': False,
-        'notes': '',
+        'year':                 None,
+        'track_release_year':   None,
+        'original_year':        None,
+        'earliest_release_year': None,
+        'is_cover':             False,
+        'original_artist':      '',
+        'genre':                '',
+        'spotify_id':           '',
+        'album_art_url':        '',
+        'mb_recording_id':      '',
+        'mb_work_id':           '',
+        'source':               'unknown',
+        'needs_review':         False,
+        'notes':                '',
     }
 
 
@@ -222,7 +228,6 @@ def _lookup_spotify(title, artist):
         return None
 
     try:
-        # Build query: prefer "track:X artist:Y" form
         query = f'track:"{_clean(title)}"'
         if artist:
             query += f' artist:"{_clean(artist)}"'
@@ -231,7 +236,6 @@ def _lookup_spotify(title, artist):
         tracks = results.get('tracks', {}).get('items', [])
 
         if not tracks:
-            # Fallback: simple keyword search
             query = f"{title} {artist}".strip()
             results = sp.search(q=query, type='track', limit=5, market='GB')
             tracks = results.get('tracks', {}).get('items', [])
@@ -239,24 +243,20 @@ def _lookup_spotify(title, artist):
         if not tracks:
             return None
 
-        # Pick best match (first result that matches title reasonably well)
         track = _best_spotify_match(tracks, title, artist)
         if not track:
             return None
 
-        # Release year from album
         release_date = track.get('album', {}).get('release_date', '')
         year = _parse_year(release_date)
 
-        # Genre from artist (Spotify stores genres at artist level)
         genres = _get_spotify_artist_genres(sp, track)
 
-        # Album art — images list is largest→smallest; pick smallest (64px) for thumbnails
         images = track.get('album', {}).get('images', [])
         album_art = images[-1].get('url', '') if images else ''
 
         return {
-            'release_year': year,
+            'track_release_year': year,   # year of this specific Spotify recording
             'genre': ', '.join(genres[:8]) if genres else '',
             'spotify_id': track.get('id', ''),
             'album_art_url': album_art,
@@ -285,13 +285,11 @@ def _best_spotify_match(tracks, title, artist):
 
 
 def _fuzzy_match(a, b, threshold=0.7):
-    """Very lightweight fuzzy match (no external library needed)."""
     a, b = _clean(a), _clean(b)
     if a == b:
         return True
     if a in b or b in a:
         return True
-    # Simple character overlap ratio
     set_a, set_b = set(a.split()), set(b.split())
     if not set_a or not set_b:
         return False
@@ -318,7 +316,6 @@ def _lookup_musicbrainz(title, artist, progress_cb=None):
         return None
 
     try:
-        # Search for recordings
         kwargs = {'recording': title, 'limit': 5}
         if artist:
             kwargs['artist'] = artist
@@ -329,40 +326,36 @@ def _lookup_musicbrainz(title, artist, progress_cb=None):
         if not recordings:
             return None
 
-        # Find best match
         rec = _best_mb_recording(recordings, title, artist)
         if not rec:
             return None
 
         data = {
-            'mb_recording_id': rec.get('id', ''),
-            'release_year': None,
-            'is_cover': False,
-            'original_year': None,
-            'original_artist': '',
-            'genre': '',
-            'mb_work_id': '',
+            'mb_recording_id':      rec.get('id', ''),
+            'earliest_release_year': None,
+            'is_cover':             False,
+            'original_year':        None,
+            'original_artist':      '',
+            'genre':                '',
+            'mb_work_id':           '',
         }
 
-        # Release year from earliest release
+        # Earliest release year from this recording's releases
         releases = rec.get('release-list', [])
         if releases:
-            years = []
-            for rel in releases:
-                y = _parse_year(rel.get('date', ''))
-                if y:
-                    years.append(y)
+            years = [_parse_year(r.get('date', '')) for r in releases]
+            years = [y for y in years if y]
             if years:
-                data['release_year'] = min(years)
+                data['earliest_release_year'] = min(years)
 
-        # Genre/tags from recording
+        # Genre/tags
         tags = rec.get('tag-list', [])
         if tags:
             top_tags = sorted(tags, key=lambda t: int(t.get('count', 0)), reverse=True)
             data['genre'] = ', '.join(t['name'] for t in top_tags[:8])
 
-        # Fetch full recording detail to check work relationships
-        time.sleep(0.5)  # MusicBrainz rate limit: 1 req/sec
+        # Fetch full recording detail for work relationships
+        time.sleep(0.5)
         try:
             detail = mb.get_recording_by_id(
                 rec['id'],
@@ -370,19 +363,24 @@ def _lookup_musicbrainz(title, artist, progress_cb=None):
             )
             rec_detail = detail.get('recording', {})
 
-            # Check work relationships (covers show up here)
+            # Update earliest release from full detail
+            full_releases = rec_detail.get('release-list', [])
+            if full_releases:
+                years = [_parse_year(r.get('date', '')) for r in full_releases]
+                years = [y for y in years if y]
+                if years:
+                    data['earliest_release_year'] = min(years)
+
             work_rels = rec_detail.get('work-relation-list', [])
             for wr in work_rels:
                 if wr.get('type') == 'performance':
                     work = wr.get('work', {})
                     data['mb_work_id'] = work.get('id', '')
 
-                    # Get work details (composer, date)
                     work_data = _get_mb_work(mb, work.get('id', ''))
                     if work_data:
                         data.update(work_data)
 
-                    # Check if this is a cover (attributes list)
                     attrs = wr.get('attribute-list', [])
                     if 'cover' in [a.lower() for a in attrs]:
                         data['is_cover'] = True
@@ -418,8 +416,36 @@ def _best_mb_recording(recordings, title, artist):
     return recordings[0] if recordings else None
 
 
+# Cache composer birth years to avoid redundant MB lookups
+_composer_birth_cache = {}
+
+
+def _get_composer_birth_year(mb, artist_id):
+    """Fetch a composer's birth year from MusicBrainz (cached)."""
+    if not artist_id:
+        return None
+    if artist_id in _composer_birth_cache:
+        return _composer_birth_cache[artist_id]
+    try:
+        time.sleep(0.5)
+        result = mb.get_artist_by_id(artist_id)
+        artist = result.get('artist', {})
+        life_span = artist.get('life-span', {})
+        born = _parse_year(life_span.get('begin', ''))
+        _composer_birth_cache[artist_id] = born
+        return born
+    except Exception:
+        _composer_birth_cache[artist_id] = None
+        return None
+
+
 def _get_mb_work(mb, work_id):
-    """Fetch a MusicBrainz Work to get composer and composition date."""
+    """Fetch a MusicBrainz Work to get composer and composition date.
+
+    Composition date is read from the composer→work relationship's
+    begin/end dates. Validated against the composer's birth year to
+    reject bad MB data (e.g. a 2015 pop song incorrectly tagged 1829).
+    """
     if not work_id:
         return None
     try:
@@ -428,34 +454,34 @@ def _get_mb_work(mb, work_id):
         work = result.get('work', {})
 
         composer = ''
+        composer_id = ''
         composition_year = None
 
-        # Composer from artist relations
         for rel in work.get('artist-relation-list', []):
             if rel.get('type') in ('composer', 'lyricist', 'writer'):
-                composer = rel.get('artist', {}).get('name', '')
-                break
+                if not composer:
+                    composer = rel.get('artist', {}).get('name', '')
+                    composer_id = rel.get('artist', {}).get('id', '')
+                # Prefer 'end' (completion) over 'begin' (start of composition)
+                rel_year = (_parse_year(rel.get('end', ''))
+                            or _parse_year(rel.get('begin', '')))
+                if rel_year and not composition_year:
+                    composition_year = rel_year
 
-        # Composition date — primary source is the work's begin-date field
-        composition_year = _parse_year(work.get('begin-date', ''))
+        # Sanity check: a composition can't predate the composer's birth
+        if composition_year and composer_id:
+            born = _get_composer_birth_year(mb, composer_id)
+            if born and composition_year < born:
+                composition_year = None  # bad MB data — discard
 
-        # Fallback: scan attribute-list (rarely populated, but keep as safety net)
-        if not composition_year:
-            for attr in work.get('attribute-list', []):
-                y = _parse_year(attr.get('value', ''))
-                if y:
-                    composition_year = y
-                    break
-
-        # Genre/tags from work
         tags = work.get('tag-list', [])
         top_tags = sorted(tags, key=lambda t: int(t.get('count', 0)), reverse=True)
         genre = ', '.join(t['name'] for t in top_tags[:8])
 
         return {
             'original_artist': composer,
-            'original_year': composition_year,
-            'genre': genre or None,
+            'original_year':   composition_year,
+            'genre':           genre or None,
         }
 
     except Exception as e:
@@ -484,7 +510,6 @@ def _lookup_lastfm_genre(title, artist):
 # ---------------------------------------------------------------------------
 
 def _clean(s):
-    """Lowercase, remove punctuation noise, normalise whitespace."""
     s = unicodedata.normalize('NFKD', s).lower()
     s = re.sub(r"['\u2019\u2018`]", '', s)
     s = re.sub(r'[^\w\s]', ' ', s)
@@ -492,7 +517,6 @@ def _clean(s):
 
 
 def _parse_year(date_str):
-    """Extract a 4-digit year from a date string like '1968', '1968-07-01'."""
     if not date_str:
         return None
     m = re.search(r'\b(1[5-9]\d{2}|20[012]\d)\b', str(date_str))
