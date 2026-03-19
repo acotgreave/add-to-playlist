@@ -259,6 +259,10 @@
     /* Ep cell */
     .ep-num  { font-size: .82rem; color: var(--muted2); white-space: nowrap; }
     .ep-date { font-size: .7rem;  color: var(--muted);  margin-top: 1px; }
+    .ep-link { color: inherit; text-decoration: none; }
+    .ep-link:hover { color: var(--gold); }
+    .ep-ext  { font-size: .65em; opacity: .5; vertical-align: super; }
+    .ep-link:hover .ep-ext { opacity: 1; }
 
     /* ── Pagination ──────────────────────────────────────────── */
     .pagination {
@@ -519,12 +523,12 @@
         <tr>
           <th style="width:58px;padding:10px 4px 10px 12px;"></th><!-- art -->
           <th style="width:44px;"></th><!-- play -->
+          <th data-sort="episode_number" onclick="sortTable('episode_number')">Ep. <span class="sa"></span></th>
           <th data-sort="title"          onclick="sortTable('title')">Title <span class="sa"></span></th>
           <th data-sort="artist"         onclick="sortTable('artist')">Artist <span class="sa"></span></th>
-          <th data-sort="year"   onclick="sortTable('year')">Year <span class="sa"></span></th>
+          <th data-sort="year" onclick="sortTable('year')" title="Year data comes from MusicBrainz and Spotify. For classical works we show the composition date; for pop tracks the earliest known release. Some years may be inaccurate — use the ✏️ pencil to submit a correction.">Year <span style="color:var(--muted);font-size:.8em;cursor:help">⚠</span> <span class="sa"></span></th>
           <th data-sort="genre1"         onclick="sortTable('genre1')">Genre <span class="sa"></span></th>
-          <th data-sort="track_type" onclick="sortTable('track_type')" title="Featured: chosen for the playlist · Background: mentioned for context only. Note: classification may occasionally be inaccurate.">Type <span style="color:var(--muted);font-size:.72em;cursor:help">⚠</span> <span class="sa"></span></th>
-          <th data-sort="episode_number" onclick="sortTable('episode_number')">Ep. <span class="sa"></span></th>
+          <th data-sort="track_type" onclick="sortTable('track_type')" title="Featured: chosen for the playlist · Background: mentioned for context only. Note: classification may occasionally be inaccurate.">Type <span style="color:var(--muted);font-size:.9em;cursor:help">ⓘ</span> <span class="sa"></span></th>
         </tr>
       </thead>
       <tbody id="tracks-body">
@@ -781,13 +785,14 @@
       const coverBadge = isCover ? '<span class="badge b-cov">cover</span>' : '';
 
       const epCell = t.episode_number
-        ? `<div class="ep-num"><a href="https://www.bbc.co.uk/programmes/${esc(t.episode_pid)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" title="View episode on BBC">#${t.episode_number}</a></div>
+        ? `<div class="ep-num"><a href="https://www.bbc.co.uk/programmes/${esc(t.episode_pid)}" target="_blank" rel="noopener" class="ep-link" title="View episode on BBC">#${t.episode_number} <span class="ep-ext">↗</span></a></div>
            <div class="ep-date">${esc((t.episode_date || '').slice(0, 10))}</div>`
         : `<div class="ep-date">${esc((t.episode_date || '').slice(0, 10))}</div>`;
 
       return `<tr data-sid="${esc(t.spotify_id || '')}">
         ${artCell}
         ${playCell}
+        <td>${epCell}${coverBadge}</td>
         <td>${t.spotify_id
           ? `<a class="track-link" href="https://open.spotify.com/track/${esc(t.spotify_id)}" target="_blank" rel="noopener">${esc(t.title)}</a>`
           : `<span style="color:var(--text);font-weight:500;">${esc(t.title)}</span>`
@@ -796,7 +801,6 @@
         <td style="color:var(--muted2);white-space:nowrap;">${yearCell}</td>
         <td style="color:var(--muted);font-size:.78rem;">${esc(t.genre1 || '')}</td>
         <td>${typeBadge}</td>
-        <td>${epCell}${coverBadge}</td>
       </tr>`;
     }).join('');
   }
