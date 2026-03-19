@@ -368,6 +368,47 @@
     }
     #corrections-fab:hover { transform: translateY(-2px); background: #ffc040; }
     #corrections-fab small { display: block; font-weight: 400; font-size: .72rem; opacity: .8; }
+
+    /* ── KPI cards ───────────────────────────────────────────────── */
+    .kpi-section { padding: 20px 0 0; margin-bottom: 16px; }
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .kpi {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px 20px;
+      border-top: 3px solid var(--gold);
+    }
+    .kpi:nth-child(2) { border-top-color: var(--cyan); }
+    .kpi:nth-child(3) { border-top-color: var(--pink); }
+    .kpi:nth-child(4) { border-top-color: var(--accent); }
+    .kpi-num { font-family: 'Bebas Neue', sans-serif; font-size: 2.2rem; color: var(--gold); line-height: 1; }
+    .kpi:nth-child(2) .kpi-num { color: var(--cyan); }
+    .kpi:nth-child(3) .kpi-num { color: var(--pink); }
+    .kpi:nth-child(4) .kpi-num { color: var(--accent); }
+    .kpi-label { font-size: .72rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: .04em; }
+    .kpi-sub { font-size: .68rem; color: var(--muted); margin-top: 2px; font-style: italic; }
+    @media (max-width: 700px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+
+    /* ── Header chart (logo-style decade bars) ───────────────────── */
+    .site-header-top {
+      display: flex; align-items: flex-end;
+      justify-content: space-between; gap: 16px;
+    }
+    .header-chart-wrap {
+      flex-shrink: 0; display: flex;
+      flex-direction: column; align-items: flex-end; padding-bottom: 6px;
+    }
+    .header-chart-label {
+      font-size: .6rem; color: var(--muted);
+      letter-spacing: .08em; text-transform: uppercase;
+      margin-bottom: 4px; text-align: right;
+    }
+    .decade-bar { cursor: pointer; transition: opacity .12s; }
+    .decade-bar:hover { opacity: 1 !important; }
+    .decade-bar.active { stroke: rgba(255,255,255,0.8); stroke-width: 1.5; }
+    @media (max-width: 800px) {
+      .site-header-top { flex-direction: column; align-items: flex-start; }
+      .header-chart-wrap { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -375,10 +416,18 @@
 
   <!-- ─── Site header ─── -->
   <header class="site-header">
-    <h1 class="site-title">Add to Playlist<span class="sub">Explorer</span></h1>
-    <p class="attribution">'Written' by <a href="https://www.linkedin.com/in/acotgreave/" target="_blank" rel="noopener">Andy Cotgreave</a> with Claude Opus 4.6.
-      <a href="https://www.linkedin.com/in/acotgreave/" target="_blank" rel="noopener">Follow Andy on LinkedIn</a>
-      &nbsp;·&nbsp; <a href="dashboard.html">📊 Data Stories</a></p>
+    <div class="site-header-top">
+      <div>
+        <h1 class="site-title">Add to Playlist<span class="sub">Explorer</span></h1>
+        <p class="attribution">'Written' by <a href="https://www.linkedin.com/in/acotgreave/" target="_blank" rel="noopener">Andy Cotgreave</a> with Claude Opus 4.6.
+          <a href="https://www.linkedin.com/in/acotgreave/" target="_blank" rel="noopener">Follow Andy on LinkedIn</a>
+          &nbsp;·&nbsp; <a href="dashboard.html">📊 Data Stories</a></p>
+      </div>
+      <div class="header-chart-wrap">
+        <div class="header-chart-label">When was the music made?</div>
+        <svg id="header-chart-svg" width="320" height="80" style="overflow:visible;display:block"></svg>
+      </div>
+    </div>
     <div class="header-meta">
       <p class="header-stats" id="header-stats">Loading…</p>
       <div class="about-trigger">ⓘ About this page
@@ -388,10 +437,38 @@
           to an imaginary communal playlist — music they love, music that deserves to be heard.
           The result is a gloriously eclectic archive of discovery. This is a fan-made explorer
           of every track ever played. Browse, search, and listen.
+          <br><br>
+          <em>A note on years:</em> Year data comes from MusicBrainz and Spotify and represents our best estimate of when music was originally composed or first released — not the specific recording you'll find on Spotify. Classical works show composition dates where known; pop tracks show earliest known commercial release. Some years may still be inaccurate. Use the ✏️ pencil icon on any row to submit a correction.
         </div>
       </div>
     </div>
   </header>
+
+  <!-- ─── KPI cards (featured tracks only, built after data loads) ─── -->
+  <section class="kpi-section" id="kpi-section" style="display:none">
+    <div class="kpi-row">
+      <div class="kpi">
+        <div class="kpi-num" id="kpi-tracks">–</div>
+        <div class="kpi-label">Featured tracks</div>
+        <div class="kpi-sub" id="kpi-tracks-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-num" id="kpi-years">–</div>
+        <div class="kpi-label">Years of music</div>
+        <div class="kpi-sub" id="kpi-years-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-num" id="kpi-artists">–</div>
+        <div class="kpi-label">Unique artists</div>
+        <div class="kpi-sub" id="kpi-artists-sub"></div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-num" id="kpi-genres">–</div>
+        <div class="kpi-label">Genres</div>
+        <div class="kpi-sub" id="kpi-genres-sub"></div>
+      </div>
+    </div>
+  </section>
 
   <!-- ─── Filter bar ─── -->
   <div class="filter-section">
@@ -446,7 +523,7 @@
           <th data-sort="artist"         onclick="sortTable('artist')">Artist <span class="sa"></span></th>
           <th data-sort="year"   onclick="sortTable('year')">Year <span class="sa"></span></th>
           <th data-sort="genre1"         onclick="sortTable('genre1')">Genre <span class="sa"></span></th>
-          <th data-sort="track_type"     onclick="sortTable('track_type')">Type <span class="sa"></span></th>
+          <th data-sort="track_type" onclick="sortTable('track_type')" title="Featured: chosen for the playlist · Background: mentioned for context only. Note: classification may occasionally be inaccurate.">Type <span style="color:var(--muted);font-size:.72em;cursor:help">⚠</span> <span class="sa"></span></th>
           <th data-sort="episode_number" onclick="sortTable('episode_number')">Ep. <span class="sa"></span></th>
         </tr>
       </thead>
@@ -506,6 +583,7 @@
   let pageSize = 50;
   let currentPlayingId = null;
   let _filterTimer = null;
+  let activeDecade = null;
 
   // ── Init ──────────────────────────────────────────────────────────────
   window.addEventListener('DOMContentLoaded', () => { loadCorrections(); loadData(); });
@@ -520,6 +598,7 @@
       allTracks = processCsvRows(result.data);
       updateStats();
       applyFilters();
+      buildKpiSection(allTracks);
     } catch (e) {
       document.getElementById('tracks-body').innerHTML =
         `<tr><td colspan="8" class="loading-msg">Could not load data: ${e.message}</td></tr>`;
@@ -613,6 +692,8 @@
     document.getElementById('cover-filter').value = '';
     document.getElementById('year-from').value    = '';
     document.getElementById('year-to').value      = '';
+    activeDecade = null;
+    document.querySelectorAll('.decade-bar').forEach(b => b.classList.remove('active'));
     applyFilters();
   }
 
@@ -700,7 +781,7 @@
       const coverBadge = isCover ? '<span class="badge b-cov">cover</span>' : '';
 
       const epCell = t.episode_number
-        ? `<div class="ep-num">#${t.episode_number}</div>
+        ? `<div class="ep-num"><a href="https://www.bbc.co.uk/programmes/${esc(t.episode_pid)}" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" title="View episode on BBC">#${t.episode_number}</a></div>
            <div class="ep-date">${esc((t.episode_date || '').slice(0, 10))}</div>`
         : `<div class="ep-date">${esc((t.episode_date || '').slice(0, 10))}</div>`;
 
@@ -954,6 +1035,140 @@
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') closeModal();
   });
+
+  // ── KPI cards + header chart ───────────────────────────────────────────
+  function buildKpiSection(tracks) {
+    const featured = tracks.filter(t => t.track_type === 'featured');
+    const years = featured.map(t => parseInt(t.year) || 0).filter(y => y > 0);
+    const minY = Math.min(...years);
+    const maxY = Math.max(...years);
+    const artists = new Set(featured.map(t => t.artist).filter(Boolean));
+    const genres  = new Set(featured.map(t => t.genre1).filter(Boolean));
+    const eps     = new Set(featured.map(t => t.episode_pid)).size;
+
+    document.getElementById('kpi-tracks').textContent     = featured.length.toLocaleString();
+    document.getElementById('kpi-tracks-sub').textContent = `across ${eps} episodes`;
+    document.getElementById('kpi-years').textContent      = (maxY - minY).toLocaleString();
+    document.getElementById('kpi-years-sub').textContent  = `${minY} to ${maxY}`;
+    document.getElementById('kpi-artists').textContent    = artists.size.toLocaleString();
+    document.getElementById('kpi-artists-sub').textContent= 'featured across all episodes';
+    document.getElementById('kpi-genres').textContent     = genres.size.toLocaleString();
+    document.getElementById('kpi-genres-sub').textContent = 'genre categories';
+    document.getElementById('kpi-section').style.display  = '';
+
+    buildHeaderChart(featured);
+  }
+
+  function buildHeaderChart(featured) {
+    const svg = document.getElementById('header-chart-svg');
+    if (!svg) return;
+    const ns = 'http://www.w3.org/2000/svg';
+
+    // Bucket by decade; everything before 1900 → '<1900'
+    const buckets = {};
+    featured.forEach(t => {
+      const y = parseInt(t.year) || 0;
+      if (!y) return;
+      const k = y < 1900 ? '<1900' : String(Math.floor(y / 10) * 10);
+      buckets[k] = (buckets[k] || 0) + 1;
+    });
+    const keys = Object.keys(buckets).sort((a, b) =>
+      a === '<1900' ? -1 : b === '<1900' ? 1 : +a - +b);
+    const vals   = keys.map(k => buckets[k]);
+    const maxVal = Math.max(...vals);
+
+    const W = 320, H = 80, padL = 2, padR = 2, padT = 4, padB = 18;
+    const plotH = H - padT - padB;
+    const slotW = (W - padL - padR) / keys.length;
+    const barW  = Math.max(4, Math.min(14, slotW - 2));
+
+    function barColor(k) {
+      if (k === '<1900') return '#1aa4b8';
+      const d = +k;
+      if (d >= 2020) return '#e8392a';
+      if (d >= 2010) return '#d4488e';
+      if (d >= 1980) return '#f5a11c';
+      if (d >= 1960) return '#d4488e';
+      if (d >= 1930) return '#f5a11c';
+      return '#6e8faa';
+    }
+
+    svg.innerHTML = '';
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+
+    // Axis line
+    const ax = document.createElementNS(ns, 'line');
+    ax.setAttribute('x1', padL); ax.setAttribute('y1', padT + plotH);
+    ax.setAttribute('x2', W - padR); ax.setAttribute('y2', padT + plotH);
+    ax.setAttribute('stroke', '#253d5c'); ax.setAttribute('stroke-width', '1');
+    svg.appendChild(ax);
+
+    keys.forEach((k, i) => {
+      const x   = padL + i * slotW + (slotW - barW) / 2;
+      const val = buckets[k];
+      const bh  = Math.max(2, (val / maxVal) * plotH);
+      const by  = padT + plotH - bh;
+      const isPeak = val === maxVal;
+
+      const rect = document.createElementNS(ns, 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', by);
+      rect.setAttribute('width', barW);
+      rect.setAttribute('height', bh);
+      rect.setAttribute('fill', barColor(k));
+      rect.setAttribute('rx', '1');
+      rect.setAttribute('opacity', isPeak ? '1' : '0.72');
+      rect.setAttribute('data-decade', k);
+      rect.classList.add('decade-bar');
+      rect.addEventListener('click', () => onDecadeClick(k));
+      svg.appendChild(rect);
+
+      // Label every other decade (and always <1900 and 2020s)
+      const dNum = parseInt(k) || 0;
+      const showLabel = k === '<1900' || dNum % 20 === 0;
+      if (showLabel) {
+        const lbl = document.createElementNS(ns, 'text');
+        lbl.setAttribute('x', x + barW / 2);
+        lbl.setAttribute('y', H - 3);
+        lbl.setAttribute('text-anchor', 'middle');
+        lbl.setAttribute('font-size', '7');
+        lbl.setAttribute('fill', '#6e8faa');
+        lbl.setAttribute('font-family', 'DM Sans, sans-serif');
+        lbl.textContent = k === '<1900' ? '<1900' : `${k}s`;
+        svg.appendChild(lbl);
+      }
+    });
+  }
+
+  function onDecadeClick(decade) {
+    const fromEl = document.getElementById('year-from');
+    const toEl   = document.getElementById('year-to');
+
+    if (activeDecade === decade) {
+      // Toggle off
+      activeDecade = null;
+      fromEl.value = '';
+      toEl.value   = '';
+      document.querySelectorAll('.decade-bar').forEach(b => b.classList.remove('active'));
+      applyFilters();
+      return;
+    }
+
+    activeDecade = decade;
+    document.querySelectorAll('.decade-bar').forEach(b =>
+      b.classList.toggle('active', b.getAttribute('data-decade') === decade));
+
+    if (decade === '<1900') {
+      fromEl.value = '';
+      toEl.value   = '1899';
+    } else {
+      const d = parseInt(decade);
+      fromEl.value = d;
+      toEl.value   = d + 9;
+    }
+    applyFilters();
+  }
 
   // ── Util ───────────────────────────────────────────────────────────────
   function esc(s) {

@@ -109,6 +109,10 @@
     <nav class="header-nav">
       <a href="index.html" class="nav-link">← Explorer</a>
       <a href="dashboard.html" class="nav-link active">Data Stories</a>
+      <select id="track-type-toggle" onchange="onTypeToggle()" style="background:var(--surface2);border:1px solid var(--border);color:var(--muted2);padding:3px 10px;border-radius:6px;font-size:.82rem;cursor:pointer;margin-left:8px;">
+        <option value="featured">Featured tracks only</option>
+        <option value="all">All tracks (inc. background)</option>
+      </select>
     </nav>
   </header>
 
@@ -186,17 +190,24 @@
 
 <script>
 const COLORS = ['#f5a11c','#1aa4b8','#d4488e','#e8392a','#1db954','#7b68ee','#ff8c42','#4ecdc4'];
+let _allRows = [];
 
 window.addEventListener('DOMContentLoaded', () => {
   Papa.parse('data/tracks.csv', {
     header: true, skipEmptyLines: true, download: true,
     complete: ({ data }) => {
+      _allRows = data;
       document.getElementById('loading').style.display = 'none';
       document.getElementById('content').style.display = 'block';
-      render(data);
+      render(data.filter(r => r.track_type === 'featured'));
     }
   });
 });
+
+function onTypeToggle() {
+  const val = document.getElementById('track-type-toggle').value;
+  render(val === 'all' ? _allRows : _allRows.filter(r => r.track_type === 'featured'));
+}
 
 function render(rows) {
   // ── KPIs ────────────────────────────────────────────────────────────────
@@ -323,21 +334,22 @@ function render(rows) {
     `<strong>Classical</strong> is the single biggest genre (96 tracks) despite the show's eclectic mix. ` +
     `Jazz, Baroque, and Classic Rock follow — but there are <strong>${genres.size} distinct genres</strong> total.`);
 
-  // ── Featured vs Background ───────────────────────────────────────────────
-  const featured   = rows.filter(r => r.track_type === 'featured').length;
-  const background = rows.filter(r => r.track_type === 'background').length;
-  const covers     = rows.filter(r => r.is_cover === 'True').length;
-  const withSpotify = rows.filter(r => r.spotify_id).length;
+  // ── Featured vs Background (always uses the full dataset) ───────────────
+  const allForType  = _allRows.length ? _allRows : rows;
+  const featCount   = allForType.filter(r => r.track_type === 'featured').length;
+  const bgCount     = allForType.filter(r => r.track_type === 'background').length;
+  const covers      = allForType.filter(r => r.is_cover === 'True').length;
+  const withSpotify = allForType.filter(r => r.spotify_id).length;
   renderBars('type-chart', [
-    { label: 'Featured tracks',    val: featured,    color: '#f5a11c' },
-    { label: 'Background music',   val: background,  color: '#1aa4b8' },
+    { label: 'Featured tracks',    val: featCount,   color: '#f5a11c' },
+    { label: 'Background music',   val: bgCount,     color: '#1aa4b8' },
     { label: 'Found on Spotify',   val: withSpotify, color: '#1db954' },
     { label: 'Are covers',         val: covers,      color: '#d4488e' },
-  ], Math.max(featured, background), 'wide');
+  ], Math.max(featCount, bgCount), 'wide');
   setText('type-insight',
-    `<strong>${featured}</strong> guest-chosen tracks vs <strong>${background}</strong> background tracks. ` +
+    `<strong>${featCount}</strong> guest-chosen tracks vs <strong>${bgCount}</strong> background tracks. ` +
     `<strong>${withSpotify.toLocaleString()}</strong> can be played inline. ` +
-    `Only <strong>${Math.round(100*covers/rows.length)}%</strong> of tracks are covers.`);
+    `Only <strong>${Math.round(100*covers/allForType.length)}%</strong> of tracks are covers.`);
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
