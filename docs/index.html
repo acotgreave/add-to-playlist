@@ -337,6 +337,11 @@
       outline: none; border-color: var(--gold);
     }
     .modal-field textarea { height: 60px; resize: vertical; }
+    .modal-error {
+      color: var(--accent); font-size: .8rem; margin-top: 6px;
+      padding: 6px 10px; background: rgba(232,57,42,0.1);
+      border-radius: 4px; border-left: 3px solid var(--accent);
+    }
     .modal-actions {
       display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px;
     }
@@ -549,16 +554,17 @@
     <div class="modal-subtitle" id="modal-track-label"></div>
     <div class="modal-field">
       <label>Track Release Year <span style="color:var(--muted);font-weight:400">(year of this specific recording)</span></label>
-      <input type="number" id="modal-release-year" min="1500" max="2030" placeholder="e.g. 1994">
+      <input type="number" id="modal-release-year" min="1000" max="2099" maxlength="4" placeholder="e.g. 1994">
     </div>
     <div class="modal-field">
       <label>Original / Composition Year <span style="color:var(--muted);font-weight:400">(first written or released)</span></label>
-      <input type="number" id="modal-original-year" min="1500" max="2030" placeholder="e.g. 1801">
+      <input type="number" id="modal-original-year" min="1000" max="2099" maxlength="4" placeholder="e.g. 1801">
     </div>
     <div class="modal-field">
       <label>Notes</label>
       <textarea id="modal-notes" placeholder="e.g. Bach BWV 1001, composed 1720"></textarea>
     </div>
+    <div id="modal-error" class="modal-error" style="display:none"></div>
     <div class="modal-actions">
       <button class="btn-clear-corr" id="btn-clear-this" onclick="clearThisCorrection()">Remove correction</button>
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
@@ -970,6 +976,7 @@
     document.getElementById('btn-clear-this').style.display =
       corrections[key] ? 'inline' : 'none';
 
+    document.getElementById('modal-error').style.display = 'none';
     document.getElementById('edit-modal').classList.add('open');
     document.getElementById('modal-release-year').focus();
   }
@@ -989,8 +996,18 @@
     const oy = document.getElementById('modal-original-year').value.trim();
     const nt = document.getElementById('modal-notes').value.trim();
 
+    // Validate: must be empty OR exactly 4 digits in range 1000–2099
+    const isValidYear = v => !v || (/^\d{4}$/.test(v) && +v >= 1000 && +v <= 2099);
+    const errEl = document.getElementById('modal-error');
+    if (!isValidYear(ry) || !isValidYear(oy)) {
+      errEl.textContent = 'Years must be a 4-digit number between 1000 and 2099.';
+      errEl.style.display = 'block';
+      return;
+    }
+    errEl.style.display = 'none';
+
     if (ry || oy || nt) {
-      const candidates = [oy ? parseInt(oy) : null, ry ? parseInt(ry) : null].filter(Boolean);
+      const candidates = [oy ? +oy : null, ry ? +ry : null].filter(Boolean);
       const bestYear   = candidates.length ? String(Math.min(...candidates)) : '';
       corrections[_editKey] = { track_release_year: ry, original_year: oy, year: bestYear, notes: nt };
     } else {
@@ -998,7 +1015,7 @@
     }
     saveCorrections();
     closeModal();
-    renderTable();  // refresh to show updated year / checkmark
+    renderTable();
   }
 
   function clearThisCorrection() {
@@ -1011,6 +1028,9 @@
 
   // ── Download corrected CSV ─────────────────────────────────────────────
   function downloadCorrectedCsv() {
+    // Prevent CSV formula injection: prefix dangerous leading chars with a single quote
+    const csvSafe = s => (s && /^[=+\-@|]/.test(s)) ? "'" + s : (s || '');
+
     const merged = allTracks.map(t => {
       const key  = trackKey(t);
       const corr = corrections[key];
@@ -1020,7 +1040,7 @@
         year:               corr.year               || t.year,
         track_release_year: corr.track_release_year || t.track_release_year,
         original_year:      corr.original_year      || t.original_year,
-        notes:              corr.notes              || t.notes,
+        notes:              csvSafe(corr.notes      || t.notes),
         needs_review:       'False',
       };
     });
