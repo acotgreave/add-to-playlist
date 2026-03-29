@@ -585,6 +585,11 @@
   // window._spotifyAPI is set by the pre-head onSpotifyIframeApiReady callback
   let _spotifyController = null;
 
+  // Strips diacritics so "Motorhead" matches "Motörhead"
+  function stripDiacritics(s) {
+    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
   // ── State ─────────────────────────────────────────────────────────────
   let allTracks      = [];
   let filteredTracks = [];
@@ -649,7 +654,7 @@
   }
 
   function applyFilters() {
-    const search   = document.getElementById('search-input').value.toLowerCase();
+    const search   = stripDiacritics(document.getElementById('search-input').value.toLowerCase());
     const typeF    = document.getElementById('type-filter').value;
     const coverF   = document.getElementById('cover-filter').value;
     const yearFrom = parseInt(document.getElementById('year-from').value) || 0;
@@ -657,9 +662,9 @@
 
     filteredTracks = allTracks.filter(t => {
       if (search) {
-        const hay = [t.title, t.artist, t.genre1, t.genre2, t.genre3,
+        const hay = stripDiacritics([t.title, t.artist, t.genre1, t.genre2, t.genre3,
                      t.other_genres, t.episode_title]
-                    .map(s => s || '').join(' ').toLowerCase();
+                    .map(s => s || '').join(' ').toLowerCase());
         if (!hay.includes(search)) return false;
       }
       if (typeF && t.track_type !== typeF) return false;
