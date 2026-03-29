@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Add to Playlist — Genre Explorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #0c1829;
+      --surface:  #132035;
+      --surface2: #1b2d47;
+      --border:   #253d5c;
+      --accent:   #e8392a;
+      --gold:     #f5a11c;
+      --pink:     #d4488e;
+      --cyan:     #1aa4b8;
+      --green:    #1db954;
+      --text:     #f0f0f0;
+      --muted:    #6e8faa;
+      --muted2:   #99b4c8;
+    }
+    body::before {
+      content: ''; display: block; height: 4px;
+      background: linear-gradient(90deg,
+        var(--accent) 25%, var(--gold) 25% 50%,
+        var(--pink) 50% 75%, var(--cyan) 75%);
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    .page { max-width: 1300px; margin: 0 auto; padding: 0 24px 64px; }
+
+    /* ── Header ── */
+    .site-header { padding: 32px 0 24px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+    .site-title { font-family: 'Bebas Neue', sans-serif; font-size: 2.8rem; line-height: 1; }
+    .site-title .sub { color: var(--gold); margin-left: 10px; font-size: 2rem; }
+    .header-nav { margin-top: 12px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+    .nav-link { color: var(--muted); font-size: .85rem; text-decoration: none; border-bottom: 1px dashed var(--border); }
+    .nav-link:hover { color: var(--gold); }
+    .nav-link.active { color: var(--gold); border-bottom-color: var(--gold); }
+    .nav-sep { color: var(--border); }
+
+    /* ── View tabs ── */
+    .view-tabs { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+    .tab-btn {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: .06em;
+      padding: 8px 20px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); cursor: pointer; transition: all .15s;
+    }
+    .tab-btn:hover { color: var(--text); border-color: var(--muted); }
+    .tab-btn.active { background: var(--gold); color: #0c1829; border-color: var(--gold); }
+
+    /* ── Loading ── */
+    .loading { padding: 48px; text-align: center; color: var(--muted); }
+
+    /* ══════════════════════════════════════════════
+       VIEW 1: FESTIVAL POSTER
+    ══════════════════════════════════════════════ */
+    #view-poster { display: none; }
+
+    .poster-wrap {
+      background: #06090f;
+      border: 2px solid var(--gold);
+      border-radius: 3px;
+      overflow: hidden;
+      margin: 0 auto 24px;
+      max-width: 720px;
+      position: relative;
+      user-select: none;
+    }
+    /* Inner border — poster double-frame effect */
+    .poster-wrap::after {
+      content: '';
+      position: absolute;
+      inset: 5px;
+      border: 1px solid rgba(245,161,28,0.28);
+      border-radius: 1px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    /* Header */
+    .poster-header {
+      text-align: center;
+      padding: 14px 28px 10px;
+      background: linear-gradient(180deg, #0d1520 0%, #06090f 100%);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+      overflow: hidden;
+    }
+    /* Lift text above the shape layers */
+    .poster-header > * { position: relative; z-index: 1; }
+    /* Left & right shape panels */
+    .poster-header::before,
+    .poster-header::after {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 26%;
+      background-repeat: no-repeat;
+      background-size: cover;
+      background-position: center;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .poster-header::before {
+      left: 0;
+      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 90'><path d='M8 0 L8 44 Q8 76 40 76 Q72 76 72 44 L72 0' fill='none' stroke='%231e3a8a' stroke-width='13' opacity='.4'/><circle cx='14' cy='25' r='34' fill='%23d4488e' opacity='.75'/><circle cx='74' cy='70' r='22' fill='%23f5a11c' opacity='.85'/><circle cx='90' cy='12' r='18' fill='%231aa4b8' opacity='.5'/><rect x='36' y='52' width='30' height='7' rx='2' fill='%23e8392a' opacity='.85'/><rect x='36' y='63' width='20' height='7' rx='2' fill='%23d4488e' opacity='.6'/></svg>");
+    }
+    .poster-header::after {
+      right: 0;
+      background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 110 90'><path d='M102 0 L102 44 Q102 76 70 76 Q38 76 38 44 L38 0' fill='none' stroke='%231e3a8a' stroke-width='13' opacity='.4'/><circle cx='96' cy='20' r='32' fill='%23f5a11c' opacity='.8'/><circle cx='30' cy='65' r='20' fill='%23d4488e' opacity='.65'/><circle cx='15' cy='15' r='16' fill='%236e8faa' opacity='.5'/><circle cx='80' cy='74' r='14' fill='none' stroke='%231aa4b8' stroke-width='3' opacity='.7'/><rect x='44' y='52' width='22' height='6' rx='2' fill='%23e8392a' opacity='.8'/><rect x='44' y='62' width='15' height='6' rx='2' fill='%23d4488e' opacity='.6'/></svg>");
+    }
+    .poster-presented {
+      font-size: 0.55rem; letter-spacing: 0.32em;
+      color: var(--muted); text-transform: uppercase; margin-bottom: 3px;
+    }
+    .poster-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(2rem, 5.5vw, 3.4rem);
+      line-height: 0.77; letter-spacing: -0.04em;
+    }
+    .pt-top {
+      color: #fff;
+      -webkit-text-stroke: 5px #000;
+      paint-order: stroke fill;
+      display: inline-block;
+    }
+    .pt-to {
+      font-size: 0.52em;
+      -webkit-text-stroke: 3px #000;
+      paint-order: stroke fill;
+    }
+    .pt-mid {
+      color: #f5a11c;
+      -webkit-text-stroke: 5px #000;
+      paint-order: stroke fill;
+      display: inline-block;
+    }
+    .poster-tagline {
+      font-size: 0.55rem; letter-spacing: 0.22em; color: var(--muted2);
+      text-transform: uppercase; margin-top: 5px;
+    }
+    .poster-rainbow {
+      height: 3px;
+      background: linear-gradient(90deg,
+        var(--accent) 0% 25%, var(--gold) 25% 50%,
+        var(--pink) 50% 75%, var(--cyan) 75%);
+      margin-top: 8px;
+    }
+
+    /* Stage rows — single column */
+    .poster-stages {
+      display: flex;
+      flex-direction: column;
+    }
+    .poster-stage {
+      padding: 6px 20px 5px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      text-align: center;
+    }
+    .poster-stage:last-child { border-bottom: none; }
+
+    /* Stage name — tiny coloured text label, no pill */
+    .poster-stage-name {
+      display: block;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 0.5rem; letter-spacing: 0.3em;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+      cursor: pointer;
+      transition: opacity .15s;
+      /* color set by JS */
+    }
+    .poster-stage-name:hover { opacity: 0.75; }
+
+    /* Artist tiers — inline with · separators */
+    .poster-tier { text-align: center; line-height: 1.2; margin-bottom: 0; }
+    .poster-sep { opacity: 0.35; pointer-events: none; }
+    .poster-artist { cursor: pointer; transition: opacity .15s; }
+    .poster-artist:hover { opacity: 0.65; }
+    .poster-artist.selected { text-decoration: underline; text-underline-offset: 2px; }
+
+    /* Tier-specific sizing */
+    .poster-tier-0 .poster-artist { font-family: 'Bebas Neue', sans-serif; font-size: clamp(1.1rem, 2.8vw, 1.65rem); letter-spacing: 0.04em; }
+    .poster-tier-0 .poster-sep   { font-family: 'Bebas Neue', sans-serif; font-size: clamp(1.1rem, 2.8vw, 1.65rem); }
+    .poster-tier-1 .poster-artist { font-size: 0.72rem; font-weight: 700; }
+    .poster-tier-1 .poster-sep   { font-size: 0.72rem; }
+    .poster-tier-2 .poster-artist { font-size: 0.6rem; font-weight: 400; opacity: 0.82; }
+    .poster-tier-2 .poster-sep   { font-size: 0.6rem; }
+
+    /* ── Poster footer ── */
+    .poster-footer {
+      text-align: center; padding: 7px; font-size: 0.48rem; letter-spacing: 0.14em;
+      color: var(--muted); text-transform: uppercase;
+      border-top: 1px solid rgba(255,255,255,0.05);
+    }
+    .poster-footer a { color: var(--muted); text-decoration: none; }
+    .poster-footer a:hover { color: var(--gold); }
+
+    /* ── Style switcher buttons ── */
+    .poster-style-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
+    .poster-style-label { font-size: 0.72rem; color: var(--muted); margin-right: 2px; }
+    .style-btn {
+      font-family: 'Bebas Neue', sans-serif; font-size: 0.9rem; letter-spacing: .06em;
+      padding: 4px 14px; border-radius: 4px; border: 1px solid var(--border);
+      background: var(--surface); color: var(--muted); cursor: pointer; transition: all .15s;
+    }
+    .style-btn:hover { color: var(--text); border-color: var(--muted); }
+    .style-btn.active { background: var(--gold); color: #0c1829; border-color: var(--gold); }
+
+    /* ══════════════════════════════════════════════
+       POSTER STYLE VARIANTS
+    ══════════════════════════════════════════════ */
+
+    /* STAGE BLOCKS — solid family-colour background per stage */
+    .poster-style-blocks { border-color: #fff !important; }
+    .poster-style-blocks::after { border-color: rgba(255,255,255,0.2) !important; }
+    .poster-style-blocks .poster-stage {
+      background: color-mix(in srgb, var(--sc) 55%, #000) !important;
+      border-bottom: 2px solid rgba(0,0,0,0.25) !important;
+    }
+    .poster-style-blocks .poster-stage-name { color: rgba(255,255,255,0.6) !important; }
+    .poster-style-blocks .poster-tier-0 .poster-artist { color: #fff !important; }
+    .poster-style-blocks .poster-tier-1 .poster-artist { color: rgba(255,255,255,0.88) !important; }
+    .poster-style-blocks .poster-tier-2 .poster-artist { color: rgba(255,255,255,0.65) !important; opacity: 1 !important; }
+    .poster-style-blocks .poster-sep   { color: rgba(255,255,255,0.35) !important; opacity: 1 !important; }
+    .poster-style-blocks .poster-footer { color: rgba(255,255,255,0.35) !important; }
+    .poster-style-blocks .poster-footer a { color: rgba(255,255,255,0.35) !important; }
+
+    /* NEON — glowing coloured text on pure black */
+    .poster-style-neon { background: #000 !important; border: 2px solid #ff2d78 !important; }
+    .poster-style-neon::after { border-color: rgba(255,45,120,0.3) !important; }
+    .poster-style-neon .poster-header { background: #000 !important; }
+    .poster-style-neon .poster-title { text-shadow: 0 0 20px rgba(255,45,120,0.5); }
+    .poster-style-neon .poster-stage { background: #000 !important; border-bottom-color: rgba(255,255,255,0.05) !important; }
+    .poster-style-neon .poster-stage-name { color: var(--sc) !important; text-shadow: 0 0 8px var(--sc) !important; }
+    .poster-style-neon .poster-tier-0 .poster-artist {
+      color: var(--sc) !important;
+      text-shadow: 0 0 10px var(--sc), 0 0 22px var(--sc) !important;
+    }
+    .poster-style-neon .poster-tier-0 .poster-sep { color: var(--sc) !important; opacity: 0.4 !important; }
+    .poster-style-neon .poster-tier-1 .poster-artist { color: #fff !important; }
+    .poster-style-neon .poster-tier-1 .poster-sep { color: rgba(255,255,255,0.25) !important; opacity: 1 !important; }
+    .poster-style-neon .poster-tier-2 .poster-artist { color: rgba(255,255,255,0.5) !important; opacity: 1 !important; }
+    .poster-style-neon .poster-tier-2 .poster-sep { color: rgba(255,255,255,0.18) !important; opacity: 1 !important; }
+
+    /* CARNIVAL — warm cream, retro fairground */
+    .poster-style-carnival { background: #fdf6e3 !important; border: 2px solid #c0392b !important; }
+    .poster-style-carnival::after { border-color: rgba(192,57,43,0.3) !important; }
+    .poster-style-carnival .poster-header { background: linear-gradient(180deg, #4a1528 0%, #2d0d19 100%) !important; border-bottom-color: #c0392b !important; }
+    .poster-style-carnival .poster-rainbow { background: linear-gradient(90deg, #c0392b 0% 25%, #e67e22 25% 50%, #f39c12 50% 75%, #8e44ad 75%) !important; }
+    .poster-style-carnival .poster-stage { background: transparent !important; border-bottom-color: rgba(0,0,0,0.07) !important; }
+    .poster-style-carnival .poster-stage:nth-child(even) { background: rgba(0,0,0,0.025) !important; }
+    .poster-style-carnival .poster-stage-name { color: var(--sc) !important; }
+    .poster-style-carnival .poster-tier-0 .poster-artist { color: #1a0800 !important; }
+    .poster-style-carnival .poster-tier-1 .poster-artist { color: #3d1e00 !important; }
+    .poster-style-carnival .poster-tier-2 .poster-artist { color: #7a4a20 !important; opacity: 1 !important; }
+    .poster-style-carnival .poster-sep { color: #c0392b !important; opacity: 0.55 !important; }
+    .poster-style-carnival .poster-footer { color: #9a6040 !important; border-top-color: rgba(0,0,0,0.08) !important; }
+    .poster-style-carnival .poster-footer a { color: #9a6040 !important; }
+
+    /* BBC — deep navy, left-accent per stage, brand-consistent */
+    .poster-style-bbc { background: #0f2654 !important; border: 2px solid #fff !important; }
+    .poster-style-bbc::after { border-color: rgba(255,255,255,0.18) !important; }
+    .poster-style-bbc .poster-header { background: linear-gradient(180deg, #0a1d42 0%, #0f2654 100%) !important; }
+    .poster-style-bbc .poster-presented,
+    .poster-style-bbc .poster-tagline { color: rgba(255,255,255,0.45) !important; }
+    .poster-style-bbc .poster-stage {
+      background: rgba(255,255,255,0.02) !important;
+      border-bottom-color: rgba(255,255,255,0.06) !important;
+      border-left: 4px solid var(--sc);
+      text-align: left !important;
+      padding-left: 14px !important;
+      padding-right: 14px !important;
+    }
+    .poster-style-bbc .poster-stage-name { color: var(--sc) !important; text-align: left !important; }
+    .poster-style-bbc .poster-tier { text-align: left !important; }
+    .poster-style-bbc .poster-tier-0 .poster-artist { color: #fff !important; }
+    .poster-style-bbc .poster-tier-1 .poster-artist { color: rgba(255,255,255,0.88) !important; }
+    .poster-style-bbc .poster-tier-2 .poster-artist { color: rgba(255,255,255,0.58) !important; opacity: 1 !important; }
+    .poster-style-bbc .poster-sep { color: var(--sc) !important; opacity: 0.55 !important; }
+    .poster-style-bbc .poster-footer { color: rgba(255,255,255,0.3) !important; border-top-color: rgba(255,255,255,0.06) !important; }
+    .poster-style-bbc .poster-footer a { color: rgba(255,255,255,0.3) !important; }
+
+    /* ══════════════════════════════════════════════
+       VIEW 2: TREEMAP (labelled)
+    ══════════════════════════════════════════════ */
+    #view-treemap { display: none; }
+    .tm-wrap { border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+    .tm-wrap svg { display: block; width: 100%; }
+    .tm-subrect { transition: opacity .1s; }
+
+    /* ══════════════════════════════════════════════
+       SELECTION BADGE + TRACK PANEL
+    ══════════════════════════════════════════════ */
+    .selection-badge {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 12px; padding: 8px 14px;
+      background: rgba(245,161,28,0.08);
+      border: 1px solid rgba(245,161,28,0.5);
+      border-radius: 6px; font-size: 0.82rem;
+    }
+    .selection-badge span { color: var(--gold); font-weight: 600; }
+    .badge-clear {
+      background: none; border: 1px solid rgba(245,161,28,0.5);
+      color: var(--gold); padding: 2px 10px; border-radius: 4px;
+      cursor: pointer; font-size: 0.75rem; transition: all .15s;
+    }
+    .badge-clear:hover { background: var(--gold); color: #0c1829; border-color: var(--gold); }
+
+    .track-panel {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 20px;
+    }
+    .track-panel-heading {
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.4rem; letter-spacing: .04em;
+      margin-bottom: 16px;
+    }
+    .track-panel-heading span { color: var(--gold); }
+    .track-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .track-table th {
+      text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border);
+      color: var(--muted); font-weight: 500; white-space: nowrap;
+    }
+    .track-table td { padding: 6px 10px; border-bottom: 1px solid rgba(37,61,92,0.5); vertical-align: middle; }
+    .track-table tr:last-child td { border-bottom: none; }
+    .track-table tr:hover td { background: var(--surface2); }
+    .track-title-link { color: var(--text); text-decoration: none; transition: color .12s; }
+    .track-title-link:hover { color: var(--gold); }
+    .ep-link { color: var(--muted2); text-decoration: none; font-size: .78rem; }
+    .ep-link:hover { color: var(--gold); }
+    .ep-ext { font-size: .65rem; vertical-align: super; opacity: 0; transition: opacity .15s; }
+    .ep-link:hover .ep-ext { opacity: 1; }
+    .genre-tag { font-size: .72rem; color: var(--muted); background: var(--surface2); padding: 2px 7px; border-radius: 10px; }
+    .no-tracks { color: var(--muted); padding: 16px 0; font-style: italic; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header class="site-header">
+    <h1 class="site-title">Add to Playlist<span class="sub">Genre Explorer</span></h1>
+    <nav class="header-nav">
+      <a href="index.html" class="nav-link">← Explorer</a>
+      <span class="nav-sep">·</span>
+      <a href="dashboard.html" class="nav-link">Data Stories</a>
+      <span class="nav-sep">·</span>
+      <a href="genre-explorer.html" class="nav-link active">Genre Explorer</a>
+    </nav>
+  </header>
+
+  <div id="loading" class="loading">Loading data…</div>
+
+  <div id="app" style="display:none">
+
+    <div class="view-tabs">
+      <button class="tab-btn active" onclick="switchTab('poster')">🎪 Festival Poster</button>
+      <button class="tab-btn" onclick="switchTab('treemap')">📦 Treemap</button>
+    </div>
+
+    <div id="view-poster">
+      <div class="poster-style-tabs">
+        <span class="poster-style-label">Style:</span>
+        <button class="style-btn active" data-style="classic"  onclick="setPosterStyle('classic')">Classic</button>
+        <button class="style-btn"        data-style="blocks"   onclick="setPosterStyle('blocks')">Stage Blocks</button>
+        <button class="style-btn"        data-style="neon"     onclick="setPosterStyle('neon')">Neon</button>
+        <button class="style-btn"        data-style="carnival" onclick="setPosterStyle('carnival')">Carnival</button>
+        <button class="style-btn"        data-style="bbc"      onclick="setPosterStyle('bbc')">BBC</button>
+      </div>
+      <div class="poster-wrap" id="poster-wrap"></div>
+    </div>
+
+    <div id="view-treemap">
+      <div class="tm-wrap" id="treemap-v2"></div>
+    </div>
+
+    <div class="selection-badge" id="selection-badge" style="display:none">
+      <span id="badge-text"></span>
+      <button class="badge-clear" onclick="clearGenreSelections()">× Clear</button>
+    </div>
+
+    <div class="track-panel">
+      <div class="track-panel-heading" id="track-heading">All featured tracks</div>
+      <div id="track-list-body"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Genre family mapping ─────────────────────────────────────────────────────
+const FAMILIES = {
+  'classical':'Classical & Opera','baroque':'Classical & Opera','impressionism':'Classical & Opera',
+  'chamber music':'Classical & Opera','minimalism':'Classical & Opera','contemporary classical':'Classical & Opera',
+  'classical piano':'Classical & Opera','choral':'Classical & Opera','medieval':'Classical & Opera',
+  'opera':'Classical & Opera','musicals':'Classical & Opera','ballet':'Classical & Opera',
+  'jazz':'Jazz & Blues','blues':'Jazz & Blues','big band':'Jazz & Blues',
+  'bebop':'Jazz & Blues','hard bop':'Jazz & Blues','brazilian jazz':'Jazz & Blues',
+  'ragtime':'Jazz & Blues','jazz rap':'Jazz & Blues',
+  'classic rock':'Rock','rock':'Rock','art rock':'Rock','progressive rock':'Rock',
+  'proto-punk':'Rock','glam rock':'Rock','psychedelic rock':'Rock',
+  'alternative rock':'Rock','folk rock':'Rock','surf rock':'Rock',
+  'britpop':'Rock','punk':'Rock','new wave':'Rock','alternative':'Rock',
+  'celtic rock':'Rock','folk metal':'Rock',
+  'pop':'Pop','art pop':'Pop','baroque pop':'Pop','soft pop':'Pop',
+  'k-pop':'Pop','yacht rock':'Pop','singer-songwriter':'Pop','ballad':'Pop',
+  'soul':'Soul & Funk','funk':'Soul & Funk','motown':'Soul & Funk',
+  'disco':'Soul & Funk','afro soul':'Soul & Funk','northern soul':'Soul & Funk',
+  'folk':'Folk & World','traditional folk':'Folk & World','celtic':'Folk & World',
+  'country':'Folk & World','outlaw country':'Folk & World','fado':'Folk & World',
+  'flamenco':'Folk & World','chanson':'Folk & World',
+  'reggae':'Folk & World','calypso':'Folk & World','exotica':'Folk & World','ghazal':'Folk & World',
+  'schlager':'Folk & World','folclor andino':'Folk & World','andean music':'Folk & World','latin pop':'Folk & World',
+  'old school hip hop':'Hip Hop & Electronic','hip hop':'Hip Hop & Electronic',
+  'electronic':'Hip Hop & Electronic','dance':'Hip Hop & Electronic','new age':'Hip Hop & Electronic',
+  'soundtrack':'Film & Novelty','score':'Film & Novelty','doo-wop':'Film & Novelty',
+  'christmas':'Film & Novelty','comedy':'Film & Novelty','meme':'Film & Novelty',
+  'instrumental':'Film & Novelty',
+};
+
+const FAMILY_ORDER = [
+  'Classical & Opera','Jazz & Blues','Rock','Pop',
+  'Soul & Funk','Folk & World','Hip Hop & Electronic','Film & Novelty'
+];
+
+const FAMILY_COLORS = {
+  'Classical & Opera':   '#a78bca',
+  'Jazz & Blues':        '#f5a11c',
+  'Rock':                '#e8392a',
+  'Pop':                 '#1aa4b8',
+  'Soul & Funk':         '#1db954',
+  'Folk & World':        '#7b68ee',
+  'Hip Hop & Electronic':'#4ecdc4',
+  'Film & Novelty':      '#f0e68c',
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let featured    = [];
+let selectedGenres = new Set();
+let singleFilter   = null;
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  Papa.parse('data/tracks.csv', {
+    header: true, skipEmptyLines: true, download: true,
+    complete: ({ data }) => {
+      featured = data.filter(r => r.track_type === 'featured');
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('app').style.display   = 'block';
+      buildPoster();
+      buildTreemapSVG('treemap-v2');
+      refreshTrackList();
+      switchTab('poster');
+    }
+  });
+});
+
+// ── Tab switcher ──────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', ['poster','treemap'][i] === tab);
+  });
+  ['poster','treemap'].forEach(t => {
+    document.getElementById('view-' + t).style.display = (t === tab) ? 'block' : 'none';
+  });
+}
+
+// ── Data helpers ──────────────────────────────────────────────────────────────
+function getFamily(row) { return FAMILIES[row.genre1] || 'Other'; }
+
+function computeArtistPrimaryFamily() {
+  const ac = {};
+  featured.forEach(r => {
+    if (!r.artist) return;
+    if (!ac[r.artist]) ac[r.artist] = {};
+    const genres = [
+      { g: r.genre1, w: 1 },
+      { g: r.genre2, w: 0.5 },
+      { g: r.genre3, w: 0.25 },
+    ];
+    genres.forEach(({ g, w }) => {
+      if (!g) return;
+      const f = FAMILIES[g];
+      if (!f) return;
+      ac[r.artist][f] = (ac[r.artist][f] || 0) + w;
+    });
+  });
+  const out = {};
+  Object.entries(ac).forEach(([a, fc]) => {
+    const entries = Object.entries(fc).sort((x,y) => y[1]-x[1]);
+    if (entries.length) out[a] = entries[0][0];
+  });
+  return out;
+}
+
+function computeArtistCounts() {
+  const c = {};
+  featured.forEach(r => { if (r.artist) c[r.artist] = (c[r.artist]||0)+1; });
+  return c;
+}
+
+function computeFamilyCounts() {
+  const c = {};
+  featured.forEach(r => { const f=getFamily(r); c[f]=(c[f]||0)+1; });
+  return c;
+}
+
+function computeSubgenreCounts() {
+  const tmp = {};
+  FAMILY_ORDER.forEach(f => tmp[f] = {});
+  featured.forEach(r => {
+    if (!r.genre1) return;
+    const f = FAMILIES[r.genre1] || 'Other';
+    if (tmp[f]) tmp[f][r.genre1] = (tmp[f][r.genre1]||0)+1;
+  });
+  const out = {};
+  FAMILY_ORDER.forEach(f => {
+    out[f] = Object.entries(tmp[f])
+      .map(([genre, count]) => ({ genre, count }))
+      .sort((a,b) => b.count - a.count);
+  });
+  return out;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VIEW 1: FESTIVAL POSTER
+// ══════════════════════════════════════════════════════════════════════════════
+function buildPoster() {
+  const primaryFamily = computeArtistPrimaryFamily();
+  const artistCounts  = computeArtistCounts();
+
+  const stageArtists = {};
+  FAMILY_ORDER.forEach(f => stageArtists[f] = []);
+  Object.entries(primaryFamily).forEach(([artist, family]) => {
+    if (stageArtists[family]) stageArtists[family].push(artist);
+  });
+
+  const wrap = document.getElementById('poster-wrap');
+  wrap.innerHTML = '';
+
+  // Header
+  wrap.insertAdjacentHTML('beforeend', `
+    <div class="poster-header">
+      <div class="poster-presented">BBC Radio 4 Presents</div>
+      <div class="poster-title"><span class="pt-top">ADD <span class="pt-to">to</span></span><br><span class="pt-mid">PLAYLIST</span></div>
+      <div class="poster-tagline">Festival · Every Friday · BBC Radio 4</div>
+      <div class="poster-rainbow"></div>
+    </div>`);
+
+  const stagesEl = document.createElement('div');
+  stagesEl.className = 'poster-stages';
+
+  FAMILY_ORDER.forEach(family => {
+    const artists = stageArtists[family]
+      .sort((a,b) => (artistCounts[b]||0) - (artistCounts[a]||0))
+      .slice(0, 7);
+    if (!artists.length) return;
+
+    const color  = FAMILY_COLORS[family];
+    const isDark = isColorDark(color);
+    const stage  = document.createElement('div');
+    stage.className = 'poster-stage';
+    stage.style.background = hexWithAlpha(color, 0.04);
+    stage.style.setProperty('--sc', color);
+
+    // Stage name — small coloured text, no background
+    const nameEl = document.createElement('div');
+    nameEl.className = 'poster-stage-name';
+    nameEl.style.color = color;
+    nameEl.textContent = (family + ' Stage').toUpperCase();
+    nameEl.title = `Show all ${family} tracks`;
+    nameEl.onclick = () => {
+      clearPosterSelections();
+      setSingleFilter({ type: 'family', value: family, label: family });
+    };
+    stage.appendChild(nameEl);
+
+    // Split into 3 tiers: [0], [1-3], [4-6]  → 1 + 3 + 3 = 7
+    const tiers = [
+      artists.slice(0, 1),
+      artists.slice(1, 4),
+      artists.slice(4, 7),
+    ];
+
+    const tierColors = [color, 'var(--text)', 'var(--muted2)'];
+
+    tiers.forEach((tierArtists, ti) => {
+      if (!tierArtists.length) return;
+      const tierEl = document.createElement('div');
+      tierEl.className = `poster-tier poster-tier-${ti}`;
+
+      tierArtists.forEach((artist, idx) => {
+        if (idx > 0) {
+          const sep = document.createElement('span');
+          sep.className = 'poster-sep';
+          sep.textContent = ' · ';
+          tierEl.appendChild(sep);
+        }
+        const count = artistCounts[artist] || 1;
+        const chip  = document.createElement('span');
+        chip.className = 'poster-artist';
+        chip.style.color = tierColors[ti];
+        chip.textContent = artist;
+        chip.title = `${count} track${count!==1?'s':''}`;
+        chip.onclick = (e) => {
+          e.stopPropagation();
+          clearPosterSelections();
+          chip.classList.add('selected');
+          setSingleFilter({ type: 'artist', value: artist, label: `${artist} · ${family}` });
+        };
+        tierEl.appendChild(chip);
+      });
+
+      stage.appendChild(tierEl);
+    });
+
+    stagesEl.appendChild(stage);
+  });
+
+  wrap.appendChild(stagesEl);
+
+  wrap.insertAdjacentHTML('beforeend', `
+    <div class="poster-footer">
+      By Andy Cotgreave &nbsp;·&nbsp;
+      <a href="https://addtoplaylist.howtospeakdata.com" target="_blank" rel="noopener">addtoplaylist.howtospeakdata.com</a>
+    </div>`);
+}
+
+function clearPosterSelections() {
+  document.querySelectorAll('.poster-artist.selected').forEach(el => el.classList.remove('selected'));
+}
+
+function setPosterStyle(name) {
+  const wrap = document.getElementById('poster-wrap');
+  wrap.className = 'poster-wrap' + (name !== 'classic' ? ' poster-style-' + name : '');
+  document.querySelectorAll('.style-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.style === name);
+  });
+}
+
+// Returns true if a hex colour is perceptually dark (needs light text)
+function isColorDark(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return (0.299*r + 0.587*g + 0.114*b) < 140;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VIEW 2: TREEMAP (labelled sub-genre breakdown)
+// ══════════════════════════════════════════════════════════════════════════════
+function buildTreemapSVG(containerId) {
+  const subgenreCounts = computeSubgenreCounts();
+  const familyCounts   = computeFamilyCounts();
+
+  const families = FAMILY_ORDER
+    .filter(f => familyCounts[f])
+    .map(f => ({ name: f, count: familyCounts[f], color: FAMILY_COLORS[f] }))
+    .sort((a,b) => b.count - a.count);
+
+  const W = 1200, H = 420;
+  const NS = 'http://www.w3.org/2000/svg';
+  const familyRects = sliceAndDice(families, 0, 0, W, H);
+
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  svg.style.cssText = 'display:block;width:100%;height:auto';
+
+  familyRects.forEach(({ x, y, w, h, name, color }) => {
+    const subs = subgenreCounts[name] || [];
+    if (!subs.length) return;
+
+    const fp = 2;
+    const subRects = sliceAndDice(
+      subs.map(s => ({ ...s, color })),
+      x + fp, y + fp, w - fp*2, h - fp*2
+    );
+
+    subRects.forEach(({ x: sx, y: sy, w: sw, h: sh, genre, count }) => {
+      const ip = 1;
+      const rw = Math.max(0, sw - ip*2);
+      const rh = Math.max(0, sh - ip*2);
+      if (rw < 2 || rh < 2) return;
+
+      const g = document.createElementNS(NS, 'g');
+      g.style.cursor  = 'pointer';
+      g.dataset.genre  = genre;
+      g.dataset.family = name;
+
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', sx + ip);
+      rect.setAttribute('y', sy + ip);
+      rect.setAttribute('width',  rw);
+      rect.setAttribute('height', rh);
+      rect.setAttribute('rx', 2);
+      rect.setAttribute('fill', color);
+      rect.setAttribute('opacity', '0.82');
+      rect.classList.add('tm-subrect');
+
+      const title = document.createElementNS(NS, 'title');
+      title.textContent = `${genre} · ${name} · ${count} track${count!==1?'s':''}`;
+      g.appendChild(title);
+      g.appendChild(rect);
+
+      // Labels
+      if (rw > 45 && rh > 14) {
+        const cx = sx + sw/2, cy = sy + sh/2;
+        const fs = Math.min(13, Math.max(7, rw / 8));
+        const hasCount = rh > 28;
+        const tyLabel  = hasCount ? cy - fs * 0.55 : cy;
+        g.appendChild(svgText(genre, cx, tyLabel, fs, 'rgba(255,255,255,0.92)', 600, rw - 6));
+        if (hasCount) {
+          g.appendChild(svgText(String(count), cx, cy + fs * 0.85,
+            Math.max(7, fs * 0.82), 'rgba(255,255,255,0.6)', 400, rw - 6));
+        }
+      }
+
+      g.onclick = () => {
+        if (selectedGenres.has(genre)) { selectedGenres.delete(genre); }
+        else                            { selectedGenres.add(genre); }
+        singleFilter = null;
+        clearPosterSelections();
+        updateTreemapSelections();
+        updateSelectionBadge();
+        refreshTrackList();
+      };
+
+      svg.appendChild(g);
+    });
+  });
+
+  const wrap = document.getElementById(containerId);
+  wrap.innerHTML = '';
+  wrap.appendChild(svg);
+}
+
+function updateTreemapSelections() {
+  document.querySelectorAll('.tm-subrect').forEach(rect => {
+    const genre = rect.closest('g').dataset.genre;
+    if (selectedGenres.has(genre)) {
+      rect.setAttribute('stroke', '#f5a11c');
+      rect.setAttribute('stroke-width', '2');
+      rect.setAttribute('opacity', '1');
+    } else {
+      rect.removeAttribute('stroke');
+      rect.removeAttribute('stroke-width');
+      rect.setAttribute('opacity', '0.82');
+    }
+  });
+}
+
+function updateSelectionBadge() {
+  const badge = document.getElementById('selection-badge');
+  const text  = document.getElementById('badge-text');
+  if (selectedGenres.size === 0) {
+    badge.style.display = 'none';
+  } else {
+    badge.style.display = 'flex';
+    const n = selectedGenres.size;
+    text.textContent = `${n} sub-genre${n>1?'s':''} selected`;
+  }
+}
+
+function clearGenreSelections() {
+  selectedGenres.clear();
+  updateTreemapSelections();
+  updateSelectionBadge();
+  refreshTrackList();
+}
+
+function sliceAndDice(items, x, y, w, h) {
+  if (!items.length) return [];
+  if (items.length === 1) return [{ ...items[0], x, y, w, h }];
+  const total = items.reduce((s,i) => s+i.count, 0);
+  const mid   = Math.ceil(items.length / 2);
+  const left  = items.slice(0, mid);
+  const right = items.slice(mid);
+  const ratio = left.reduce((s,i) => s+i.count, 0) / total;
+  if (w >= h) {
+    const lw = w * ratio;
+    return [...sliceAndDice(left, x, y, lw, h), ...sliceAndDice(right, x+lw, y, w-lw, h)];
+  } else {
+    const lh = h * ratio;
+    return [...sliceAndDice(left, x, y, w, lh), ...sliceAndDice(right, x, y+lh, w, h-lh)];
+  }
+}
+
+function svgText(text, x, y, fontSize, fill, weight, maxWidth) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = document.createElementNS(NS, 'text');
+  el.setAttribute('x', x); el.setAttribute('y', y);
+  el.setAttribute('text-anchor', 'middle');
+  el.setAttribute('dominant-baseline', 'middle');
+  el.setAttribute('fill', fill);
+  el.setAttribute('font-size', fontSize);
+  el.setAttribute('font-weight', weight);
+  el.setAttribute('font-family', 'DM Sans, sans-serif');
+  el.setAttribute('pointer-events', 'none');
+  if (text.length * fontSize * 0.55 > maxWidth) {
+    el.setAttribute('textLength', maxWidth);
+    el.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+  }
+  el.textContent = text;
+  return el;
+}
+
+// ── Filter logic ──────────────────────────────────────────────────────────────
+function setSingleFilter(filter) {
+  singleFilter = filter;
+  selectedGenres.clear();
+  updateTreemapSelections();
+  updateSelectionBadge();
+  refreshTrackList();
+}
+
+function refreshTrackList() {
+  let rows, label;
+  if (selectedGenres.size > 0) {
+    rows  = featured.filter(r => selectedGenres.has(r.genre1));
+    const n = selectedGenres.size;
+    label = `${n} sub-genre${n>1?'s':''} selected`;
+  } else if (singleFilter) {
+    const f = singleFilter;
+    if      (f.type === 'family') rows = featured.filter(r => getFamily(r) === f.value);
+    else if (f.type === 'artist') rows = featured.filter(r => r.artist === f.value);
+    else if (f.type === 'genre1') rows = featured.filter(r => r.genre1 === f.value);
+    else rows = featured;
+    label = f.label;
+  } else {
+    rows  = featured;
+    label = 'All featured tracks';
+  }
+  renderTrackTable(rows, label);
+}
+
+function renderTrackTable(rows, label) {
+  document.getElementById('track-heading').innerHTML =
+    `<span>${rows.length}</span> track${rows.length!==1?'s':''} — ${esc(label)}`;
+
+  const body = document.getElementById('track-list-body');
+  if (!rows.length) { body.innerHTML = '<p class="no-tracks">No tracks found.</p>'; return; }
+
+  const sorted = [...rows].sort((a,b) => {
+    const ya = +a.year||9999, yb = +b.year||9999;
+    return ya!==yb ? ya-yb : (a.title||'').localeCompare(b.title||'');
+  });
+
+  body.innerHTML = `<table class="track-table">
+    <thead><tr>
+      <th>Title</th><th>Artist</th><th>Year</th><th>Genre</th><th>Episode</th>
+    </tr></thead>
+    <tbody>${sorted.map(r => {
+      const url  = r.episode_pid ? `https://www.bbc.co.uk/programmes/${esc(r.episode_pid)}` : '';
+      const titleHtml = url
+        ? `<a class="track-title-link" href="${url}" target="_blank" rel="noopener">${esc(r.title)}</a>`
+        : esc(r.title);
+      const epHtml = url
+        ? `<a class="ep-link" href="${url}" target="_blank" rel="noopener">#${esc(r.episode_number)} <span class="ep-ext">↗</span></a>`
+        : `#${esc(r.episode_number||'')}`;
+      return `<tr>
+        <td>${titleHtml}</td>
+        <td>${esc(r.artist)}</td>
+        <td>${r.year||'–'}</td>
+        <td><span class="genre-tag">${esc(r.genre1||'–')}</span></td>
+        <td>${epHtml}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function hexWithAlpha(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+}
+</script>
+</body>
+</html>
