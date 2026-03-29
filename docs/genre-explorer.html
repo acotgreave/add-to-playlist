@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+  <script>window.onSpotifyIframeApiReady = (IFrameAPI) => { window._spotifyAPI = IFrameAPI; };</script>
+  <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -337,6 +339,46 @@
     .ep-link:hover .ep-ext { opacity: 1; }
     .genre-tag { font-size: .72rem; color: var(--muted); background: var(--surface2); padding: 2px 7px; border-radius: 10px; }
     .no-tracks { color: var(--muted); padding: 16px 0; font-style: italic; }
+
+    /* ── Shared track table styles (matching main Explorer) ── */
+    .track-table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    .track-table thead th {
+      background: var(--surface2); padding: 11px 12px; text-align: left;
+      color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    .track-table tbody tr { border-bottom: 1px solid rgba(37,61,92,0.7); }
+    .track-table tbody tr:last-child { border-bottom: none; }
+    .track-table tbody tr:hover td { background: var(--surface2); }
+    .track-table tbody tr.player-row td,
+    .track-table tbody tr.player-row:hover td { background: #0a1525; }
+    .track-table td { padding: 9px 12px; vertical-align: middle; }
+
+    .art-cell { padding: 6px 8px 6px 12px !important; width: 58px; }
+    .art-thumb { width: 46px; height: 46px; border-radius: 5px; object-fit: cover; display: block; background: var(--surface2); }
+    .art-placeholder { width: 46px; height: 46px; border-radius: 5px; background: var(--surface2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 1.2rem; color: var(--border); }
+
+    .play-btn { width: 30px; height: 30px; border-radius: 50%; background: var(--green); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: .65rem; color: #000; font-weight: 700; transition: transform .1s, background .1s; flex-shrink: 0; }
+    .play-btn:hover  { transform: scale(1.12); background: #1ed760; }
+    .play-btn.active { background: #fff; }
+    .play-cell { width: 44px; padding: 6px 4px !important; text-align: center; }
+
+    .player-iframe-wrap { padding: 0 12px 10px; }
+    .player-iframe-wrap iframe { width: 100%; height: 80px; border: none; border-radius: 8px; display: block; }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: .69rem; font-weight: 600; white-space: nowrap; }
+    .b-feat { background: rgba(245,161,28,0.15); color: #f5c55a; border: 1px solid rgba(245,161,28,0.25); }
+    .b-bg   { background: rgba(37,61,92,0.6);   color: var(--muted2); border: 1px solid var(--border); }
+    .b-cov  { background: rgba(26,164,184,0.12); color: #5dd0de; border: 1px solid rgba(26,164,184,0.25); }
+
+    .track-link { color: var(--text); font-weight: 500; text-decoration: none; }
+    .track-link:hover { color: var(--gold); text-decoration: underline; text-underline-offset: 3px; }
+
+    .ep-num  { font-size: .82rem; color: var(--muted2); white-space: nowrap; }
+    .ep-date { font-size: .7rem;  color: var(--muted);  margin-top: 1px; }
+    .ep-link { color: inherit; text-decoration: none; }
+    .ep-link:hover { color: var(--gold); }
+    .ep-ext  { font-size: .65em; opacity: .5; vertical-align: super; }
+    .ep-link:hover .ep-ext { opacity: 1; }
   </style>
 </head>
 <body>
@@ -442,6 +484,8 @@ const FAMILY_COLORS = {
 let featured    = [];
 let selectedGenres = new Set();
 let singleFilter   = null;
+let currentPlayingId = null;
+let _spotifyController = null;
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
@@ -539,6 +583,17 @@ function buildPoster() {
     if (stageArtists[family]) stageArtists[family].push(artist);
   });
 
+  // Sort stages: 1) top artist's track count desc, 2) total stage tracks desc
+  const sortedFamilies = [...FAMILY_ORDER].sort((a, b) => {
+    const aa = stageArtists[a] || [], ab = stageArtists[b] || [];
+    const topA = aa.length ? Math.max(...aa.map(x => artistCounts[x] || 0)) : 0;
+    const topB = ab.length ? Math.max(...ab.map(x => artistCounts[x] || 0)) : 0;
+    if (topB !== topA) return topB - topA;
+    const totalA = aa.reduce((s, x) => s + (artistCounts[x] || 0), 0);
+    const totalB = ab.reduce((s, x) => s + (artistCounts[x] || 0), 0);
+    return totalB - totalA;
+  });
+
   const wrap = document.getElementById('poster-wrap');
   wrap.innerHTML = '';
 
@@ -554,7 +609,7 @@ function buildPoster() {
   const stagesEl = document.createElement('div');
   stagesEl.className = 'poster-stages';
 
-  FAMILY_ORDER.forEach(family => {
+  sortedFamilies.forEach(family => {
     const artists = stageArtists[family]
       .sort((a,b) => (artistCounts[b]||0) - (artistCounts[a]||0))
       .slice(0, 7);
@@ -852,25 +907,78 @@ function renderTrackTable(rows, label) {
 
   body.innerHTML = `<table class="track-table">
     <thead><tr>
-      <th>Title</th><th>Artist</th><th>Year</th><th>Genre</th><th>Episode</th>
+      <th></th><th></th><th>Episode</th><th>Title</th><th>Artist</th><th>Year</th><th>Genre</th><th>Type</th>
     </tr></thead>
     <tbody>${sorted.map(r => {
-      const url  = r.episode_pid ? `https://www.bbc.co.uk/programmes/${esc(r.episode_pid)}` : '';
-      const titleHtml = url
-        ? `<a class="track-title-link" href="${url}" target="_blank" rel="noopener">${esc(r.title)}</a>`
-        : esc(r.title);
-      const epHtml = url
-        ? `<a class="ep-link" href="${url}" target="_blank" rel="noopener">#${esc(r.episode_number)} <span class="ep-ext">↗</span></a>`
-        : `#${esc(r.episode_number||'')}`;
-      return `<tr>
+      const isCover = r.is_cover === 'True' || r.is_cover === '1';
+      const artCell = r.album_art_url
+        ? `<td class="art-cell"><img class="art-thumb" src="${esc(r.album_art_url)}" alt="" loading="lazy" onerror="this.parentNode.innerHTML='<div class=art-placeholder>♪</div>'"></td>`
+        : `<td class="art-cell"><div class="art-placeholder">♪</div></td>`;
+      const playCell = r.spotify_id
+        ? `<td class="play-cell"><button class="play-btn" id="pb-${esc(r.spotify_id)}" onclick="togglePlay('${esc(r.spotify_id)}','${esc(r.title)}','${esc(r.artist)}')" title="Play: ${esc(r.title)}">▶</button></td>`
+        : `<td class="play-cell"></td>`;
+      const epCell = r.episode_number
+        ? `<div class="ep-num"><a href="https://www.bbc.co.uk/programmes/${esc(r.episode_pid)}" target="_blank" rel="noopener" class="ep-link">#${r.episode_number} <span class="ep-ext">↗</span></a></div><div class="ep-date">${esc((r.episode_date||'').slice(0,10))}</div>`
+        : `<div class="ep-date">${esc((r.episode_date||'').slice(0,10))}</div>`;
+      const titleHtml = r.spotify_id
+        ? `<a class="track-link" href="https://open.spotify.com/track/${esc(r.spotify_id)}" target="_blank" rel="noopener">${esc(r.title)}</a>`
+        : `<span style="color:var(--text);font-weight:500">${esc(r.title)}</span>`;
+      const typeBadge = r.track_type === 'featured'
+        ? '<span class="badge b-feat">featured</span>'
+        : '<span class="badge b-bg">background</span>';
+      const coverBadge = isCover ? ' <span class="badge b-cov">cover</span>' : '';
+      return `<tr data-sid="${esc(r.spotify_id||'')}">
+        ${artCell}${playCell}
+        <td>${epCell}${coverBadge}</td>
         <td>${titleHtml}</td>
-        <td>${esc(r.artist)}</td>
-        <td>${r.year||'–'}</td>
-        <td><span class="genre-tag">${esc(r.genre1||'–')}</span></td>
-        <td>${epHtml}</td>
+        <td style="color:var(--muted2)">${esc(r.artist)}</td>
+        <td style="color:var(--muted2);white-space:nowrap">${esc(r.year||'–')}</td>
+        <td style="color:var(--muted);font-size:.78rem">${esc(r.genre1||'')}</td>
+        <td>${typeBadge}</td>
       </tr>`;
     }).join('')}</tbody>
   </table>`;
+}
+
+function togglePlay(id, title, artist) {
+  if (currentPlayingId === id) { closePlayer(); return; }
+  if (currentPlayingId) closePlayer(false);
+  currentPlayingId = id;
+  const row = document.querySelector(`tr[data-sid="${id}"]`);
+  if (!row) return;
+  const btn = document.getElementById('pb-' + id);
+  if (btn) btn.classList.add('active');
+  const playerRow = document.createElement('tr');
+  playerRow.className = 'player-row';
+  playerRow.id = 'player-row-' + id;
+  const td = document.createElement('td');
+  td.colSpan = 8;
+  td.className = 'player-iframe-wrap';
+  const embedTarget = document.createElement('div');
+  embedTarget.id = 'spotify-embed-' + id;
+  td.appendChild(embedTarget);
+  playerRow.appendChild(td);
+  row.insertAdjacentElement('afterend', playerRow);
+  if (window._spotifyAPI) {
+    window._spotifyAPI.createController(embedTarget, { uri: `spotify:track:${id}`, width: '100%', height: 80 },
+      (controller) => { _spotifyController = controller; controller.play(); });
+  } else {
+    embedTarget.innerHTML = `<iframe src="https://open.spotify.com/embed/track/${id}?utm_source=generator"
+      style="width:100%;height:80px;border:none;border-radius:8px;display:block;"
+      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>`;
+  }
+  setTimeout(() => playerRow.scrollIntoView({behavior:'smooth', block:'nearest'}), 80);
+}
+
+function closePlayer(resetState = true) {
+  if (currentPlayingId) {
+    const btn = document.getElementById('pb-' + currentPlayingId);
+    if (btn) btn.classList.remove('active');
+    if (_spotifyController) { try { _spotifyController.destroy(); } catch(e) {} _spotifyController = null; }
+    const pr = document.getElementById('player-row-' + currentPlayingId);
+    if (pr) pr.remove();
+  }
+  if (resetState) currentPlayingId = null;
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
