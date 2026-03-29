@@ -171,7 +171,6 @@
       color: var(--text); padding: 9px 12px;
       border-radius: 7px; font-size: .87rem; cursor: pointer;
     }
-    .f-year { width: 80px; }
     .f-label { color: var(--muted); font-size: .82rem; white-space: nowrap; }
 
     .filter-info {
@@ -496,11 +495,6 @@
         <option value="true">Covers only</option>
         <option value="false">Originals only</option>
       </select>
-      <span class="f-label">Year:</span>
-      <input type="number" id="year-from" class="f-year" placeholder="from"
-             min="1900" max="2030" oninput="applyFilters()">
-      <input type="number" id="year-to" class="f-year" placeholder="to"
-             min="1900" max="2030" oninput="applyFilters()">
     </div>
 
     <div class="filter-info">
@@ -597,6 +591,7 @@
   let sortDir  = 'desc';
   let currentPage = 1;
   let pageSize = 50;
+  let yearRange = { from: 0, to: 9999 };
   let currentPlayingId = null;
   let _filterTimer = null;
   let activeDecade = null;
@@ -657,8 +652,6 @@
     const search   = stripDiacritics(document.getElementById('search-input').value.toLowerCase());
     const typeF    = document.getElementById('type-filter').value;
     const coverF   = document.getElementById('cover-filter').value;
-    const yearFrom = parseInt(document.getElementById('year-from').value) || 0;
-    const yearTo   = parseInt(document.getElementById('year-to').value)   || 9999;
 
     filteredTracks = allTracks.filter(t => {
       if (search) {
@@ -673,9 +666,9 @@
         if (coverF === 'true'  && !isCover) return false;
         if (coverF === 'false' &&  isCover) return false;
       }
-      if (yearFrom || yearTo < 9999) {
+      if (yearRange.from || yearRange.to < 9999) {
         const y = parseInt(t.year || t.original_year || t.track_release_year) || 0;
-        if (y && (y < yearFrom || y > yearTo)) return false;
+        if (y && (y < yearRange.from || y > yearRange.to)) return false;
       }
       return true;
     });
@@ -706,8 +699,7 @@
     document.getElementById('search-input').value = '';
     document.getElementById('type-filter').value  = '';
     document.getElementById('cover-filter').value = '';
-    document.getElementById('year-from').value    = '';
-    document.getElementById('year-to').value      = '';
+    yearRange = { from: 0, to: 9999 };
     activeDecade = null;
     document.querySelectorAll('.decade-bar').forEach(b => b.classList.remove('active'));
     applyFilters();
@@ -1172,14 +1164,9 @@
   }
 
   function onDecadeClick(decade) {
-    const fromEl = document.getElementById('year-from');
-    const toEl   = document.getElementById('year-to');
-
     if (activeDecade === decade) {
-      // Toggle off
       activeDecade = null;
-      fromEl.value = '';
-      toEl.value   = '';
+      yearRange = { from: 0, to: 9999 };
       document.querySelectorAll('.decade-bar').forEach(b => b.classList.remove('active'));
       applyFilters();
       return;
@@ -1190,12 +1177,10 @@
       b.classList.toggle('active', b.getAttribute('data-decade') === decade));
 
     if (decade === '<1900') {
-      fromEl.value = '';
-      toEl.value   = '1899';
+      yearRange = { from: 0, to: 1899 };
     } else {
       const d = parseInt(decade);
-      fromEl.value = d;
-      toEl.value   = d + 9;
+      yearRange = { from: d, to: d + 9 };
     }
     applyFilters();
   }
